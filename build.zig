@@ -1,14 +1,25 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
-    const process_mod = b.addModule("utils", .{ .root_source_file = b.path("utils/process.zig") });
-
-    const testing_exe = b.addExecutable(.{
-        .name = "testing",
-        .root_source_file = b.path("testing/main.zig"),
-        .target = b.standardTargetOptions(.{}),
-        .optimize = b.standardOptimizeOption(.{}),
+fn addExecutableWithName(
+    comptime name: []const u8,
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const exe = b.addExecutable(.{
+        .name = name,
+        .root_source_file = b.path(name ++ "/main.zig"),
+        .target = target,
+        .optimize = optimize,
     });
-    testing_exe.root_module.addImport("process", process_mod);
-    b.installArtifact(testing_exe);
+    exe.root_module.addAnonymousImport("shared", .{ .root_source_file = b.path("shared/shared.zig") });
+    b.installArtifact(exe);
+}
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    addExecutableWithName("testing", b, target, optimize);
+    addExecutableWithName("testing2", b, target, optimize);
 }
