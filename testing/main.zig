@@ -11,10 +11,7 @@ pub fn main() !void {
     var arena_allocator = std.heap.ArenaAllocator.init(allocator);
     defer arena_allocator.deinit();
 
-    const parsed_lines = try process.parse_file(
-        Context,
-        []u8,
-        parse_line,
+    const parsed_lines = try process.FileParser(Context, []u8, parse_line).parse(
         arena_allocator.allocator(),
         .{},
         "testing/test_file.txt",

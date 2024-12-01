@@ -39,10 +39,7 @@ pub fn main() !void {
     //const file_name = "day1/test_file.txt";
     const file_name = "day1/input.txt";
 
-    const parsed_lines = try process.parse_file(
-        Context,
-        Line,
-        parse_line,
+    const parsed_lines = try process.FileParser(Context, Line, parse_line).parse(
         arena_allocator.allocator(),
         context,
         file_name,
@@ -60,20 +57,17 @@ pub fn main() !void {
 }
 
 fn parse_line(allocator: std.mem.Allocator, context: Context, line: []const u8) !Line {
-    const next_1 = try process.read_next(allocator, 0, line, context.delimiters);
-    defer next_1.next.deinit();
-    const value_1 = try std.fmt.parseInt(i32, next_1.next.items, 10);
+    var parser = process.LineParser().init(allocator, context.delimiters, line);
 
-    const next_2 = try process.read_next(allocator, next_1.new_start, line, context.delimiters);
-    defer next_2.next.deinit();
-    const value_2 = try std.fmt.parseInt(i32, next_2.next.items, 10);
+    const v1 = try parser.read_int(i32, 10);
+    const v2 = try parser.read_int(i32, 10);
 
-    try context.list1.append(value_1);
-    try context.list2.append(value_2);
+    try context.list1.append(v1);
+    try context.list2.append(v2);
 
     return .{
-        .v1 = value_1,
-        .v2 = value_2,
+        .v1 = v1,
+        .v2 = v2,
     };
 }
 

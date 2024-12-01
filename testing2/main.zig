@@ -23,10 +23,7 @@ pub fn main() !void {
     var delimiters = std.AutoHashMap(u8, bool).init(arena_allocator.allocator());
     try delimiters.put(' ', true);
 
-    const parsed_lines = try process.parse_file(
-        Context,
-        Data,
-        parse_line,
+    const parsed_lines = try process.FileParser(Context, Data, parse_line).parse(
         arena_allocator.allocator(),
         .{ .delimiters = delimiters },
         "testing2/test_file.txt",
@@ -41,17 +38,11 @@ pub fn main() !void {
 }
 
 fn parse_line(allocator: std.mem.Allocator, context: Context, line: []const u8) !Data {
-    const next_x = try process.read_next(allocator, 0, line, context.delimiters);
-    defer next_x.next.deinit();
-    const x = try std.fmt.parseInt(usize, next_x.next.items, 10);
+    var parser = process.LineParser().init(allocator, context.delimiters, line);
 
-    const next_y = try process.read_next(allocator, next_x.new_start, line, context.delimiters);
-    defer next_y.next.deinit();
-    const y = try std.fmt.parseFloat(f64, next_y.next.items);
-
-    const next_z = try process.read_next(allocator, next_y.new_start, line, context.delimiters);
-    defer next_z.next.deinit();
-    const z = try allocator.dupe(u8, next_z.next.items);
+    const x = try parser.read_int(usize, 10);
+    const y = try parser.read_float(f64);
+    const z = try parser.read_string();
 
     return .{
         .x = x,
