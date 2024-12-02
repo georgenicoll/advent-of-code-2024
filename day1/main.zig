@@ -1,5 +1,7 @@
 const std = @import("std");
-const process = @import("shared").process;
+const shared = @import("shared");
+const process = shared.process;
+const iteration = shared.iteration;
 
 const Context = struct {
     delimiters: std.AutoHashMap(u8, bool),
@@ -76,24 +78,26 @@ fn calculate(allocator: std.mem.Allocator, context: Context) !void {
     std.mem.sort(i32, context.list1.items, {}, comptime std.sort.asc(i32));
     std.mem.sort(i32, context.list2.items, {}, comptime std.sort.asc(i32));
 
-    //calculate all of the differences
-    var diffs = std.ArrayList(u32).init(allocator);
+    const zip = iteration.Zip(i32, i32, u32).init(allocator);
+    const diff_func = struct {
+        fn diff(alloc: std.mem.Allocator, v1: i32, v2: i32) !u32 {
+            _ = alloc;
+            return @abs(v2 - v1);
+        }
+    }.diff;
+    const res = try zip.zip(context.list1.items, context.list2.items, diff_func);
+    const diffs = std.ArrayList(u32).fromOwnedSlice(allocator, res);
     defer diffs.deinit();
 
-    //NOTE: create a zip
-    var i: usize = 0;
-    while (i < context.list1.items.len) : (i += 1) {
-        const v1 = context.list1.items[i];
-        const v2 = context.list2.items[i];
-        const diff = @abs(v2 - v1);
-        try diffs.append(diff);
-    }
-
     //Final value is the sum of these - note create a fold
-    var sum: u32 = 0;
-    for (diffs.items) |diff| {
-        sum += diff;
-    }
+    const folder = iteration.Fold(u32, u32).init(allocator);
+    const combiner = struct {
+        pub fn fold(alloc: std.mem.Allocator, acc: u32, item: u32) !u32 {
+            _ = alloc;
+            return acc + item;
+        }
+    }.fold;
+    const sum = try folder.fold(0, diffs.items, combiner);
 
     try std.io.getStdOut().writer().print("Sum is {d}\n", .{sum});
 }
@@ -103,12 +107,13 @@ fn calculate_2(allocator: std.mem.Allocator, context: Context) !void {
     var occurrances = std.AutoArrayHashMap(i32, u32).init(allocator);
     defer occurrances.deinit();
 
+    //NOTE: convert to fold?
     for (context.list2.items) |value| {
         const occurs = occurrances.get(value) orelse 0;
         try occurrances.put(value, occurs + 1);
     }
 
-    //Now calculate the similarity score
+    //Now calculate the similarity score - NOTE:  convert to fold?
     var score: u64 = 0;
     for (context.list1.items) |value| {
         const occurs = occurrances.get(value) orelse 0;
