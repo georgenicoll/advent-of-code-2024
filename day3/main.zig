@@ -27,9 +27,9 @@ pub fn main() !void {
     var delimiters = std.AutoHashMap(u8, bool).init(arena_allocator.allocator());
     try delimiters.put(' ', true);
 
-    //const file_name = "day2/test_file.txt";
-    //const file_name = "day2/test_cases.txt";
-    const file_name = "day2/input.txt";
+    const file_name = "day3/test_file.txt";
+    //const file_name = "day3/test_cases.txt";
+    //const file_name = "day3/input.txt";
 
     const parsed_lines = try process.FileParser(Context, Line, parse_line).parse(
         arena_allocator.allocator(),
@@ -136,7 +136,8 @@ fn calculate_2(allocator: std.mem.Allocator, lines: std.ArrayList(Line)) !void {
                 return num_safe + 1;
             }
             //try removing each item and re-checking
-            for (0..line.levels.items.len) |i| {
+            var i: usize = 0;
+            while (i < line.levels.items.len) : (i += 1) {
                 var levels_copy = try line.levels.clone();
                 _ = levels_copy.orderedRemove(i);
                 if (line_is_safe(levels_copy)) {

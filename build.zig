@@ -24,4 +24,5 @@ pub fn build(b: *std.Build) void {
     addExecutableWithName("testing2", b, target, optimize);
     addExecutableWithName("day1", b, target, optimize);
     addExecutableWithName("day2", b, target, optimize);
+    addExecutableWithName("day3", b, target, optimize);
 }

@@ -74,6 +74,36 @@ pub fn Fold(
     };
 }
 
+pub fn Map(
+    comptime T: type,
+    comptime R: type,
+) type {
+    return struct {
+        const Self = @This();
+
+        allocator: std.mem.Allocator,
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return .{
+                .allocator = allocator,
+            };
+        }
+
+        pub fn map(
+            self: Self,
+            items: []const T,
+            mapping_fn: fn (std.mem.Allocator, T) anyerror!R,
+        ) ![]R {
+            var result = std.ArrayList(R).init(self.allocator);
+            for (items) |item| {
+                const mapped = try mapping_fn(self.allocator, item);
+                try result.append(mapped);
+            }
+            return result.toOwnedSlice();
+        }
+    };
+}
+
 const expect = std.testing.expect;
 const eql = std.meta.eql;
 
@@ -153,7 +183,7 @@ test "zip 2 array lists, second shorter" {
 
     const zipper = Zip(i32, i32, i32).init(allocator);
     const combiner = struct {
-        fn combiner(alloc: std.mem.Allocator, v1: i32, v2: i32) i32 {
+        fn combiner(alloc: std.mem.Allocator, v1: i32, v2: i32) !i32 {
             _ = alloc;
             return v1 + v2;
         }
@@ -182,7 +212,7 @@ test "fold into an array list" {
             alloc: std.mem.Allocator,
             list: *std.ArrayList(Vals2),
             item: i32,
-        ) !std.ArrayList(Vals2) {
+        ) anyerror!*std.ArrayList(Vals2) {
             _ = alloc;
             const vals = Vals2{ .v1 = list.items.len, .v2 = item };
             try list.append(vals);
@@ -197,7 +227,7 @@ test "fold into an array list" {
         &items,
         combiner,
     );
-    defer allocator.free(res);
+    defer res.deinit();
 
     try expect(res.items.len == 3);
     try expect(eql(res.items[0], .{ .v1 = 0, .v2 = 2 }));
@@ -215,7 +245,7 @@ test "fold into a sum" {
             alloc: std.mem.Allocator,
             acc: i32,
             item: i32,
-        ) i32 {
+        ) !i32 {
             _ = alloc;
             return acc + item;
         }
@@ -225,4 +255,26 @@ test "fold into a sum" {
     const res = try folder.fold(0, &items, combiner);
 
     try expect(res == 15);
+}
+
+test "map" {
+    const allocator = std.testing.allocator;
+
+    const items = [_]u32{ 2, 5, 8 };
+
+    const mapper = struct {
+        fn mapper(alloc: std.mem.Allocator, value: u32) !i64 {
+            _ = alloc;
+            return -@as(i64, value);
+        }
+    }.mapper;
+
+    const map = Map(u32, i64).init(allocator);
+    const res = try map.map(&items, mapper);
+    defer allocator.free(res);
+
+    try expect(res.len == 3);
+    try expect(res[0] == -2);
+    try expect(res[1] == -5);
+    try expect(res[2] == -8);
 }

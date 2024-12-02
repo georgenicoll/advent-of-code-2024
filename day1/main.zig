@@ -89,7 +89,7 @@ fn calculate(allocator: std.mem.Allocator, context: Context) !void {
     const diffs = std.ArrayList(u32).fromOwnedSlice(allocator, res);
     defer diffs.deinit();
 
-    //Final value is the sum of these - note create a fold
+    //Final value is the sum of these
     const folder = iteration.Fold(u32, u32).init(allocator);
     const combiner = struct {
         pub fn fold(alloc: std.mem.Allocator, acc: u32, item: u32) !u32 {
