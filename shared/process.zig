@@ -115,6 +115,10 @@ pub fn LineParser() type {
             defer next.deinit();
             return next.toOwnedSlice();
         }
+
+        pub fn has_more(self: Self) bool {
+            return self.pos < self.line.len;
+        }
     };
 }
 
@@ -128,13 +132,18 @@ test "LineParser test 1" {
 
     var parser = LineParser().init(std.testing.allocator, delims, "2 5.6 bob 5");
 
+    try expect(parser.has_more());
     const val1 = try parser.read_int(i32, 10);
     try expect(val1 == 2);
+    try expect(parser.has_more());
     const val2 = try parser.read_float(f32);
     try expect(val2 == 5.6);
+    try expect(parser.has_more());
     const val3 = try parser.read_string();
     defer std.testing.allocator.free(val3);
+    try expect(parser.has_more());
     try expect(eql(u8, val3, "bob"));
     const val4 = try parser.read_int(u32, 10);
     try expect(val4 == 5);
+    try expect(!parser.has_more());
 }
