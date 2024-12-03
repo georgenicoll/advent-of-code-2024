@@ -25,8 +25,6 @@ const Mul = struct {
 };
 
 const Do = struct {
-    ignored: i64 = 0,
-
     pub fn print(self: Do, writer: anytype) !void {
         _ = self;
         try writer.print("do", .{});
@@ -34,8 +32,6 @@ const Do = struct {
 };
 
 const Dont = struct {
-    ignored: i64 = 0,
-
     pub fn print(self: Dont, writer: anytype) !void {
         _ = self;
         try writer.print("dont", .{});
@@ -240,17 +236,6 @@ fn calculate(allocator: std.mem.Allocator, ops: *std.ArrayList(Mul)) !void {
 
 fn calculate_2(allocator: std.mem.Allocator, ops: *std.ArrayList(Op)) !void {
     _ = allocator;
-
-    // var dos: usize = 0;
-    // var donts: usize = 0;
-    // for (ops.items) |op| {
-    //     switch (op) {
-    //         .mul => |_| {},
-    //         .do => |_| dos += 1,
-    //         .dont => |_| donts += 1,
-    //     }
-    // }
-    // try std.io.getStdOut().writer().print("Do: {d}, Dont: {d}\n", .{ dos, donts });
 
     var sum: i64 = 0;
     var doing = true;
