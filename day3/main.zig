@@ -114,13 +114,54 @@ pub fn main() !void {
     );
     defer parsed_lines2.deinit();
 
-    const stdout = std.io.getStdOut();
-    for (context2.ops.items) |op| {
-        try op.print(stdout.writer());
-        try stdout.writeAll("\n");
-    }
+    // const stdout = std.io.getStdOut();
+    // for (context2.ops.items) |op| {
+    //     try op.print(stdout.writer());
+    //     try stdout.writeAll("\n");
+    // }
 
     try calculate_2(arena_allocator.allocator(), context2.ops);
+}
+
+fn parse_mul(parser: *process.LineParser(), next_string: []const u8) ?Mul {
+    //is there a 'mul' immediately before it?
+    if (next_string.len < 3) {
+        return null;
+    }
+    const possible_mul = next_string[next_string.len - 3 ..];
+    if (!eql(u8, "mul", possible_mul)) {
+        return null;
+    }
+    // Expect mul(a,b)
+    if (parser.first_delimiter() != '(') {
+        return null;
+    }
+
+    // try to read an int
+    const a = parser.consume_int(i64) catch null;
+    if (a == null) {
+        return null;
+    }
+    // needs a , as the delimiter
+    if (parser.peek_char() != ',') {
+        return null;
+    }
+    //consume the ,
+    _ = parser.read_char();
+
+    // try to read an int
+    const b = parser.consume_int(i64) catch null;
+    if (b == null) {
+        return null;
+    }
+    // needs a ) as the delimiter
+    if (parser.peek_char() != ')') {
+        return null;
+    }
+    //consume the )
+    _ = parser.read_char();
+
+    return Mul{ .a = a.?, .b = b.? };
 }
 
 fn parse_line1(allocator: std.mem.Allocator, context: Context1, line: []const u8) !Line {
@@ -133,51 +174,27 @@ fn parse_line1(allocator: std.mem.Allocator, context: Context1, line: []const u8
         const next_string = try parser.read_string();
         defer parser.allocator.free(next_string);
 
-        //is there a 'mul' immediately before it?
-        if (next_string.len < 3) {
-            continue;
-        }
-        const possible_mul = next_string[next_string.len - 3 ..];
-        if (eql(u8, "mul", possible_mul)) {
-            // Expect mul(a,b)
-            if (parser.first_delimiter() != '(') {
-                continue;
-            }
-
-            // try to read an int
-            const a_chars = try parser.read_next_int_chars();
-            defer a_chars.deinit();
-            const a = std.fmt.parseInt(i64, a_chars.items, 10) catch null;
-            if (a == null) {
-                continue;
-            }
-            // needs a , as the delimiter
-            if (parser.peek_char() != ',') {
-                continue;
-            }
-            //consume the ,
-            _ = parser.read_char();
-
-            // try to read an int
-            const b_chars = try parser.read_next_int_chars();
-            defer b_chars.deinit();
-            const b = std.fmt.parseInt(i64, b_chars.items, 10) catch null;
-            if (b == null) {
-                continue;
-            }
-            // needs a ) as the delimiter
-            if (parser.peek_char() != ')') {
-                continue;
-            }
-            //consume the )
-            _ = parser.read_char();
-
-            const mul = Mul{ .a = a.?, .b = b.? };
-            try context.ops.append(mul);
+        const mul = parse_mul(&parser, next_string);
+        if (mul) |value| {
+            try context.ops.append(value);
         }
     }
 
     return .{};
+}
+
+fn parse_no_param_func(parser: *process.LineParser(), next_string: []const u8, func_name: []const u8) bool {
+    if (next_string.len >= func_name.len) {
+        const possible_func = next_string[next_string.len - func_name.len ..];
+        if (eql(u8, possible_func, func_name)) {
+            //expect func()
+            const found_delims = parser.found_delimiters.items;
+            if (found_delims.len >= 2 and found_delims[0] == '(' and found_delims[1] == ')') {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 fn parse_line2(allocator: std.mem.Allocator, context: Context2, line: []const u8) !Line {
@@ -191,72 +208,21 @@ fn parse_line2(allocator: std.mem.Allocator, context: Context2, line: []const u8
         defer parser.allocator.free(next_string);
 
         //Is this a do?
-        if (next_string.len >= 2) {
-            const possible_do = next_string[next_string.len - 2 ..];
-            if (eql(u8, "do", possible_do)) {
-                //expect do()
-                const found_delims = parser.found_delimiters.items;
-                if (found_delims.len >= 2 and found_delims[0] == '(' and found_delims[1] == ')') {
-                    try context.ops.append(Op{ .do = Do{} });
-                    continue;
-                }
-            }
+        if (parse_no_param_func(&parser, next_string, "do")) {
+            try context.ops.append(Op{ .do = Do{} });
+            continue;
         }
 
         //Is this a don't?
-        if (next_string.len >= 5) {
-            const possible_dont = next_string[next_string.len - 5 ..];
-            if (eql(u8, "don't", possible_dont)) {
-                const found_delims = parser.found_delimiters.items;
-                if (found_delims.len >= 2 and found_delims[0] == '(' and found_delims[1] == ')') {
-                    try context.ops.append(Op{ .dont = Dont{} });
-                    continue;
-                }
-            }
-        }
-
-        //TODO Refactor
-        //is this a mul
-        if (next_string.len < 3) {
+        if (parse_no_param_func(&parser, next_string, "don't")) {
+            try context.ops.append(Op{ .dont = Dont{} });
             continue;
         }
-        const possible_mul = next_string[next_string.len - 3 ..];
-        if (eql(u8, "mul", possible_mul)) {
-            // Expect mul(a,b)
-            if (parser.first_delimiter() != '(') {
-                continue;
-            }
 
-            // try to read an int
-            const a_chars = try parser.read_next_int_chars();
-            defer a_chars.deinit();
-            const a = std.fmt.parseInt(i64, a_chars.items, 10) catch null;
-            if (a == null) {
-                continue;
-            }
-            // needs a , as the delimiter
-            if (parser.peek_char() != ',') {
-                continue;
-            }
-            //consume the ,
-            _ = parser.read_char();
-
-            // try to read an int
-            const b_chars = try parser.read_next_int_chars();
-            defer b_chars.deinit();
-            const b = std.fmt.parseInt(i64, b_chars.items, 10) catch null;
-            if (b == null) {
-                continue;
-            }
-            // needs a ) as the delimiter
-            if (parser.peek_char() != ')') {
-                continue;
-            }
-            //consume the )
-            _ = parser.read_char();
-
-            const mul = Op{ .mul = Mul{ .a = a.?, .b = b.? } };
-            try context.ops.append(mul);
+        //is this a mul
+        const mul = parse_mul(&parser, next_string);
+        if (mul) |value| {
+            try context.ops.append(Op{ .mul = value });
         }
     }
 
@@ -275,16 +241,16 @@ fn calculate(allocator: std.mem.Allocator, ops: *std.ArrayList(Mul)) !void {
 fn calculate_2(allocator: std.mem.Allocator, ops: *std.ArrayList(Op)) !void {
     _ = allocator;
 
-    var dos: usize = 0;
-    var donts: usize = 0;
-    for (ops.items) |op| {
-        switch (op) {
-            .mul => |_| {},
-            .do => |_| dos += 1,
-            .dont => |_| donts += 1,
-        }
-    }
-    try std.io.getStdOut().writer().print("Do: {d}, Dont: {d}\n", .{ dos, donts });
+    // var dos: usize = 0;
+    // var donts: usize = 0;
+    // for (ops.items) |op| {
+    //     switch (op) {
+    //         .mul => |_| {},
+    //         .do => |_| dos += 1,
+    //         .dont => |_| donts += 1,
+    //     }
+    // }
+    // try std.io.getStdOut().writer().print("Do: {d}, Dont: {d}\n", .{ dos, donts });
 
     var sum: i64 = 0;
     var doing = true;

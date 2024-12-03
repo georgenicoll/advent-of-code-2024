@@ -91,15 +91,13 @@ pub fn LineParser() type {
 
             var next = std.ArrayList(u8).init(self.allocator);
 
-            var found_delimiter = false;
             while (self.pos < self.line.len) : (self.pos += 1) {
                 const char = self.line[self.pos];
                 if (self.delimiters.contains(char)) {
                     try self.found_delimiters.append(char);
-                    found_delimiter = true;
                     continue;
                 }
-                if (found_delimiter) {
+                if (self.found_delimiters.items.len > 0) {
                     break;
                 }
                 try next.append(char);
@@ -116,8 +114,8 @@ pub fn LineParser() type {
         }
 
         /// Reads the next set of chars that are digits
-        /// Remeber to deinit the returned array list
-        pub fn read_next_int_chars(self: *Self) !std.ArrayList(u8) {
+        /// Remember to deinit the returned array list
+        fn read_next_int_chars(self: *Self) !std.ArrayList(u8) {
             var chars = std.ArrayList(u8).init(self.allocator);
 
             while (self.has_more()) {
@@ -133,6 +131,12 @@ pub fn LineParser() type {
             }
 
             return chars;
+        }
+
+        pub fn consume_int(self: *Self, comptime T: type) !T {
+            const chars = try self.read_next_int_chars();
+            defer chars.deinit();
+            return try std.fmt.parseInt(T, chars.items, 10);
         }
 
         /// Reads the next float
@@ -160,6 +164,21 @@ pub fn LineParser() type {
             const next_char = self.line[self.pos];
             self.pos += 1;
             return next_char;
+        }
+
+        /// Reads the next delimiters from pos, incrementing pos as delimiters are found
+        /// delimiters will be put into found_delimiters
+        pub fn consume_delimiters(self: *Self) !void {
+            self.found_delimiters.clearRetainingCapacity();
+
+            while (self.pos < self.line.len) : (self.pos += 1) {
+                const char = self.line[self.pos];
+                if (self.delimiters.contains(char)) {
+                    try self.found_delimiters.append(char);
+                    continue;
+                }
+                break;
+            }
         }
 
         pub fn peek_char(self: *Self) ?u8 {
@@ -285,4 +304,24 @@ test "peek chars" {
 
     const peek7 = try parser.peek_chars(4);
     try expect(peek7 == null);
+}
+
+test "consume int and delimiters" {
+    var delims = std.AutoHashMap(u8, bool).init(std.testing.allocator);
+    try delims.put(',', true);
+    try delims.put(' ', true);
+    defer delims.deinit();
+
+    var parser = LineParser().init(std.testing.allocator, delims, "123,,,,,456,   ,789,101");
+    defer parser.deinit();
+
+    try expect(try parser.consume_int(i32) == 123);
+    try parser.consume_delimiters();
+    try expect(eql(u8, parser.found_delimiters.items, ",,,,,"));
+    try expect(try parser.read_int(i64, 10) == 456);
+    try expect(eql(u8, parser.found_delimiters.items, ",   ,"));
+    try expect(try parser.consume_int(i32) == 789);
+    try parser.consume_delimiters();
+    try expect(eql(u8, parser.found_delimiters.items, ","));
+    try expect(try parser.consume_int(i32) == 101);
 }
