@@ -1,5 +1,6 @@
 const std = @import("std");
 const shared = @import("shared");
+const aoc = shared.aoc;
 const process = shared.process;
 const iteration = shared.iteration;
 const utils = shared.utils;
@@ -9,23 +10,7 @@ const Context = struct {
     const Self = @This();
 
     delimiters: std.AutoHashMap(u8, bool),
-    grid: std.ArrayList(std.ArrayList(u8)),
-    width: usize = 0,
-    height: usize = 0,
-
-    fn item_at(self: Self, i: isize, j: isize) ?u8 {
-        if (i < 0 or j < 0) {
-            return null;
-        }
-        const i_u = @as(usize, @intCast(i));
-        const j_u = @as(usize, @intCast(j));
-
-        if (i_u >= self.width or j_u >= self.height) {
-            return null;
-        }
-        const row: std.ArrayList(u8) = self.grid.items[@as(usize, @intCast(j))];
-        return row.items[@as(usize, @intCast(i))];
-    }
+    grid: aoc.Grid(u8),
 };
 
 const Line = struct {};
@@ -44,13 +29,8 @@ pub fn main() !void {
     var delimiters = std.AutoHashMap(u8, bool).init(arena_allocator.allocator());
     try delimiters.put(' ', true);
 
-    var grid = std.ArrayList(std.ArrayList(u8)).init(arena_allocator.allocator());
-    defer {
-        for (grid.items) |row| {
-            row.deinit();
-        }
-        grid.deinit();
-    }
+    var grid = aoc.Grid(u8).init(arena_allocator.allocator());
+    defer grid.deinit();
 
     var context = Context{
         .delimiters = delimiters,
@@ -81,22 +61,14 @@ pub fn main() !void {
 }
 
 fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8) !Line {
-    if (context.width > 0 and line.len > context.width) {
-        @panic("Got an unexpected change in line length");
-    }
-
-    var row = try std.ArrayList(u8).initCapacity(allocator, line.len);
-    try row.appendSlice(line);
-    try context.grid.append(row);
-    context.width = line.len;
-    context.height = context.grid.items.len;
-
+    _ = allocator;
+    try context.grid.addRow(line);
     return .{};
 }
 
 fn search(
     allocator: std.mem.Allocator,
-    context: Context,
+    grid: aoc.Grid(u8),
     to_find: []const u8,
     found_so_far: std.ArrayList(u8),
     current_i: isize,
@@ -105,7 +77,7 @@ fn search(
     direction_j: isize,
 ) !usize {
     //try to get the next char
-    const next = context.item_at(current_i + direction_i, current_j + direction_j);
+    const next = grid.itemAt(current_i + direction_i, current_j + direction_j);
     if (next == null) {
         return 0; //can't get any more
     }
@@ -126,39 +98,36 @@ fn search(
     }
 
     //Not a full string - keep going in the same direction
-    return try search(allocator, context, to_find, new_found_so_far, current_i + direction_i, current_j + direction_j, direction_i, direction_j);
+    return try search(allocator, grid, to_find, new_found_so_far, current_i + direction_i, current_j + direction_j, direction_i, direction_j);
 }
 
 fn calculate(allocator: std.mem.Allocator, context: Context) !void {
-    // var arena_allocator = std.heap.ArenaAllocator.init(allocator);
-    // defer arena_allocator.deinit();
-    // const alloc = arena_allocator.allocator();
-    const alloc = allocator;
+    const grid = context.grid;
 
     var sum: usize = 0;
 
     //Go to each point in the grid and search in a straight line to see if we have the word XMAS
-    for (0..context.height) |j_u| {
+    for (0..grid.height) |j_u| {
         const j = @as(isize, @intCast(j_u));
-        for (0..context.width) |i_u| {
+        for (0..grid.width) |i_u| {
             const i = @as(isize, @intCast(i_u));
-            const start_char = context.item_at(i, j);
+            const start_char = grid.itemAt(i, j);
             if (start_char != 'X') {
                 continue;
             }
 
-            var found_so_far = try std.ArrayList(u8).initCapacity(alloc, 1);
+            var found_so_far = try std.ArrayList(u8).initCapacity(allocator, 1);
             defer found_so_far.deinit();
             try found_so_far.append(start_char.?);
 
-            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 0, -1); //N
-            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 1, -1); //NE
-            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 1, 0); //E
-            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 1, 1); //SE
-            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 0, 1); //S
-            sum += try search(alloc, context, "XMAS", found_so_far, i, j, -1, 1); //SW
-            sum += try search(alloc, context, "XMAS", found_so_far, i, j, -1, 0); //W
-            sum += try search(alloc, context, "XMAS", found_so_far, i, j, -1, -1); //NW
+            sum += try search(allocator, grid, "XMAS", found_so_far, i, j, 0, -1); //N
+            sum += try search(allocator, grid, "XMAS", found_so_far, i, j, 1, -1); //NE
+            sum += try search(allocator, grid, "XMAS", found_so_far, i, j, 1, 0); //E
+            sum += try search(allocator, grid, "XMAS", found_so_far, i, j, 1, 1); //SE
+            sum += try search(allocator, grid, "XMAS", found_so_far, i, j, 0, 1); //S
+            sum += try search(allocator, grid, "XMAS", found_so_far, i, j, -1, 1); //SW
+            sum += try search(allocator, grid, "XMAS", found_so_far, i, j, -1, 0); //W
+            sum += try search(allocator, grid, "XMAS", found_so_far, i, j, -1, -1); //NW
         }
     }
 
@@ -167,23 +136,25 @@ fn calculate(allocator: std.mem.Allocator, context: Context) !void {
 
 fn calculate_2(allocator: std.mem.Allocator, context: Context) !void {
     _ = allocator;
+    const grid = context.grid;
+
     var sum: usize = 0;
 
-    //Go to each point in the grid and search for the A - note we can do this one row and column in from the edges
-    for (1..context.height - 1) |j_u| {
+    //Go to each point in the grid and search for the X
+    for (0..grid.height) |j_u| {
         const j = @as(isize, @intCast(j_u));
-        for (1..context.width - 1) |i_u| {
+        for (0..grid.width) |i_u| {
             const i = @as(isize, @intCast(i_u));
-            const start_char = context.item_at(i, j);
+            const start_char = grid.itemAt(i, j);
             if (start_char != 'A') {
                 continue;
             }
 
             //need diagonal MAS or SAM in both diagonal directions - these are independent of each other
-            const nw = context.item_at(i - 1, j - 1);
-            const se = context.item_at(i + 1, j + 1);
-            const ne = context.item_at(i + 1, j - 1);
-            const sw = context.item_at(i - 1, j + 1);
+            const nw = grid.itemAt(i - 1, j - 1);
+            const se = grid.itemAt(i + 1, j + 1);
+            const ne = grid.itemAt(i + 1, j - 1);
+            const sw = grid.itemAt(i - 1, j + 1);
 
             const nw_to_se_diagonal_ok = (nw == 'M' and se == 'S') or (nw == 'S' and se == 'M');
             const ne_to_sw_diagonal_ok = (ne == 'M' and sw == 'S') or (ne == 'S' and sw == 'M');

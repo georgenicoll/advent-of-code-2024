@@ -38,8 +38,10 @@ pub fn build(b: *std.Build) void {
 
     addExecutableWithName("testing", b, regex_lib, target, optimize);
     addExecutableWithName("testing2", b, regex_lib, target, optimize);
+    addExecutableWithName("template", b, regex_lib, target, optimize);
     addExecutableWithName("day1", b, regex_lib, target, optimize);
     addExecutableWithName("day2", b, regex_lib, target, optimize);
     addExecutableWithName("day3", b, regex_lib, target, optimize);
     addExecutableWithName("day4", b, regex_lib, target, optimize);
+    addExecutableWithName("day5", b, regex_lib, target, optimize);
 }
