@@ -71,7 +71,12 @@ pub fn main() !void {
     // }
     // try stdout.writer().print("width: {d}, height: {d}\n", .{ context.width, context.height });
 
-    try calculate(arena_allocator.allocator(), context);
+    //Playing with the amount of memory needed - the minimum is 10 bytes (1 + 2 + 3 + 4) for the required array lists
+    const allocator_buffer = try gpa.allocator().alloc(u8, 10);
+    defer gpa.allocator().free(allocator_buffer);
+    var fba = std.heap.FixedBufferAllocator.init(allocator_buffer);
+    try calculate(fba.allocator(), context);
+
     try calculate_2(arena_allocator.allocator(), context);
 }
 
@@ -125,6 +130,11 @@ fn search(
 }
 
 fn calculate(allocator: std.mem.Allocator, context: Context) !void {
+    // var arena_allocator = std.heap.ArenaAllocator.init(allocator);
+    // defer arena_allocator.deinit();
+    // const alloc = arena_allocator.allocator();
+    const alloc = allocator;
+
     var sum: usize = 0;
 
     //Go to each point in the grid and search in a straight line to see if we have the word XMAS
@@ -137,18 +147,18 @@ fn calculate(allocator: std.mem.Allocator, context: Context) !void {
                 continue;
             }
 
-            var found_so_far = try std.ArrayList(u8).initCapacity(allocator, 1);
+            var found_so_far = try std.ArrayList(u8).initCapacity(alloc, 1);
             defer found_so_far.deinit();
             try found_so_far.append(start_char.?);
 
-            sum += try search(allocator, context, "XMAS", found_so_far, i, j, 0, -1); //N
-            sum += try search(allocator, context, "XMAS", found_so_far, i, j, 1, -1); //NE
-            sum += try search(allocator, context, "XMAS", found_so_far, i, j, 1, 0); //E
-            sum += try search(allocator, context, "XMAS", found_so_far, i, j, 1, 1); //SE
-            sum += try search(allocator, context, "XMAS", found_so_far, i, j, 0, 1); //S
-            sum += try search(allocator, context, "XMAS", found_so_far, i, j, -1, 1); //SW
-            sum += try search(allocator, context, "XMAS", found_so_far, i, j, -1, 0); //W
-            sum += try search(allocator, context, "XMAS", found_so_far, i, j, -1, -1); //NW
+            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 0, -1); //N
+            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 1, -1); //NE
+            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 1, 0); //E
+            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 1, 1); //SE
+            sum += try search(alloc, context, "XMAS", found_so_far, i, j, 0, 1); //S
+            sum += try search(alloc, context, "XMAS", found_so_far, i, j, -1, 1); //SW
+            sum += try search(alloc, context, "XMAS", found_so_far, i, j, -1, 0); //W
+            sum += try search(alloc, context, "XMAS", found_so_far, i, j, -1, -1); //NW
         }
     }
 
@@ -159,10 +169,10 @@ fn calculate_2(allocator: std.mem.Allocator, context: Context) !void {
     _ = allocator;
     var sum: usize = 0;
 
-    //Go to each point in the grid and search for the X
-    for (0..context.height) |j_u| {
+    //Go to each point in the grid and search for the A - note we can do this one row and column in from the edges
+    for (1..context.height - 1) |j_u| {
         const j = @as(isize, @intCast(j_u));
-        for (0..context.width) |i_u| {
+        for (1..context.width - 1) |i_u| {
             const i = @as(isize, @intCast(i_u));
             const start_char = context.item_at(i, j);
             if (start_char != 'A') {
