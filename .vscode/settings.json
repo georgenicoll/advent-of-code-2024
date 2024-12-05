@@ -1,0 +1,3 @@
+{
+    "zig-language-extras.testArgs": "-lc -I ./lib",
+}

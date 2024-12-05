@@ -12,6 +12,15 @@
             "preLaunchTask": "zig build",
             //"MIMode": "lldb",
             "cwd": "${workspaceRoot}",
+        },
+        {
+            "name": "Debug Current Tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/zig-out/bin/${fileBasenameNoExtension}-test",
+            "preLaunchTask": "build-test",
+            //"MIMode": "lldb",
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

@@ -5,6 +5,11 @@
             "label": "zig build",
             "type": "shell",
             "command": "zig build",
+        },
+        {
+            "label": "build-test",
+            "type": "shell",
+            "command": "zig test -lc --test-filter matches ${file} -femit-bin=zig-out/bin/${fileBasenameNoExtension}-test --test-no-exec",
         }
     ]
 }
