@@ -45,11 +45,7 @@ pub fn main() !void {
     defer parsed_lines.deinit();
 
     // const stdout = std.io.getStdOut();
-    // for (context.grid.items) |row| {
-    //     try stdout.writeAll(row.items);
-    //     try stdout.writeAll("\n");
-    // }
-    // try stdout.writer().print("width: {d}, height: {d}\n", .{ context.width, context.height });
+    // try context.grid.print(stdout.writer(), "{d},");
 
     //Playing with the amount of memory needed - the minimum is 10 bytes (1 + 2 + 3 + 4) for the required array lists
     const allocator_buffer = try gpa.allocator().alloc(u8, 10);

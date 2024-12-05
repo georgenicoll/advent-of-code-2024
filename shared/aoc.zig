@@ -54,6 +54,16 @@ pub fn Grid(comptime ELEMENT_TYPE: type) type {
             const row = self.rows.items[j];
             return row[i];
         }
+
+        pub fn print(self: Self, writer: anytype, comptime element_format: []const u8) !void {
+            for (self.rows.items) |row| {
+                for (row) |cell| {
+                    try writer.print(element_format, .{cell});
+                }
+                try writer.writeAll("\n");
+            }
+            try writer.print("width: {d}, height: {d}\n", .{ self.width, self.height });
+        }
     };
 }
 
