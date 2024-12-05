@@ -6,6 +6,34 @@ const c = @cImport({
     @cInclude("regex_slim.h");
 });
 
+const Matches = struct {
+    const Self = @This();
+
+    matches: *std.ArrayList(*std.ArrayList(u8)),
+
+    fn init(allocator: std.mem.Allocator) !Self {
+        const matches = try allocator.create(std.ArrayList(*std.ArrayList(u8)));
+        matches.* = std.ArrayList(*std.ArrayList(u8)).init(allocator);
+        return .{
+            .matches = matches,
+        };
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.matches.items) |match| {
+            match.deinit();
+        }
+        self.matches.deinit();
+    }
+
+    fn appendMatch(self: *Self, allocator: std.mem.Allocator, match: []const u8) !void {
+        const map: *std.ArrayList(u8) = try allocator.create(std.ArrayList(u8));
+        map.* = std.ArrayList(u8).init(allocator);
+        try map.*.appendSlice(match);
+        try self.matches.append(map);
+    }
+};
+
 const Regex = struct {
     inner: *c.regex_t,
 
@@ -31,12 +59,12 @@ const Regex = struct {
     }
 
     /// Execute the regex against the input string.
-    /// Returns an array list containing array lists for each match
-    fn exec(self: Regex, allocator: std.mem.Allocator, input: [:0]const u8) !std.ArrayList(std.ArrayList(u8)) {
+    /// Returns an array list containing array lists for each match - all should be cleaned up
+    fn exec(self: Regex, allocator: std.mem.Allocator, input: [:0]const u8) !Matches {
         const match_size = 1;
         var pmatch: [match_size]c.regmatch_t = undefined;
 
-        var re_matches = std.ArrayList(std.ArrayList(u8)).init(allocator);
+        var re_matches = try Matches.init(allocator);
         var string = input;
 
         while (true) {
@@ -45,8 +73,7 @@ const Regex = struct {
             }
 
             const slice = string[@as(usize, @intCast(pmatch[0].rm_so))..@as(usize, @intCast(pmatch[0].rm_eo))];
-            const string_list = std.ArrayList(u8).fromOwnedSlice(allocator, std.allocator.dupe([]const u8, slice));
-            try re_matches.append(string_list);
+            try re_matches.appendMatch(allocator, slice);
 
             string = string[@intCast(pmatch[0].rm_eo)..];
         }
@@ -56,9 +83,28 @@ const Regex = struct {
 };
 
 const expect = std.testing.expect;
+const eql = std.mem.eql;
+const testing_alloc = std.testing.allocator;
+
+test "matches simple" {
+    const regex1 = try Regex.init("nice");
+    defer regex1.deinit();
+
+    try expect(regex1.matches("this should match nice!"));
+}
+
+test "exec simple" {
+    const regex1 = try Regex.init("nice");
+    defer regex1.deinit();
+
+    const result = try regex1.exec(testing_alloc, "this should nice match nice");
+    try expect(result.matches.items.len == 2);
+    try expect(eql(u8, result.matches.items[0].items, "nice"));
+    try expect(eql(u8, result.matches.items[1].items, "nice"));
+}
 
 test "matches" {
-    const regex1 = try Regex.init(".*mul(\\d,\\d).*");
+    const regex1 = try Regex.init(".*mul\\([:digit:]*,[:digit:]\\).*");
     defer regex1.deinit();
 
     try expect(regex1.matches("do()something((mul(123,456)))))()"));

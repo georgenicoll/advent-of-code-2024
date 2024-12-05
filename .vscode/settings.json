@@ -1,3 +1,3 @@
 {
-    "zig-language-extras.testArgs": "-lc -I ./lib",
+    "zig-language-extras.testArgs": "-lc -cflags -std=c99 -- lib/regex_slim.c -Ilib",
 }

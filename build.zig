@@ -35,6 +35,7 @@ pub fn build(b: *std.Build) void {
         .flags = &.{"-std=c99"},
     });
     regex_lib.linkLibC();
+    b.installArtifact(regex_lib);
 
     addExecutableWithName("testing", b, regex_lib, target, optimize);
     addExecutableWithName("testing2", b, regex_lib, target, optimize);
