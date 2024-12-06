@@ -5,14 +5,14 @@ pub fn Grid(comptime ELEMENT_TYPE: type) type {
         const Self = @This();
 
         allocator: std.mem.Allocator,
-        rows: std.ArrayList([]const ELEMENT_TYPE),
+        rows: std.ArrayList([]ELEMENT_TYPE),
         width: usize = 0,
         height: usize = 0,
 
         pub fn init(allocator: std.mem.Allocator) Self {
             return .{
                 .allocator = allocator,
-                .rows = std.ArrayList([]const ELEMENT_TYPE).init(allocator),
+                .rows = std.ArrayList([]ELEMENT_TYPE).init(allocator),
             };
         }
 
@@ -53,6 +53,27 @@ pub fn Grid(comptime ELEMENT_TYPE: type) type {
         fn getItemWithinBounds(self: Self, i: usize, j: usize) ELEMENT_TYPE {
             const row = self.rows.items[j];
             return row[i];
+        }
+
+        pub fn setItemAt(self: *Self, i: isize, j: isize, item: ELEMENT_TYPE) !void {
+            if (i < 0 or j < 0 or i >= self.width or j >= self.height) {
+                return error.OutOfBounds;
+            }
+            const i_u = @as(usize, @intCast(i));
+            const j_u = @as(usize, @intCast(j));
+            self.setItemWithinBounds(i_u, j_u, item);
+        }
+
+        pub fn setItemAtU(self: *Self, i: usize, j: usize, item: ELEMENT_TYPE) !void {
+            if (i >= self.width or j >= self.height) {
+                return error.OutOfBounds;
+            }
+            self.setItemWithinBounds(i, j, item);
+        }
+
+        fn setItemWithinBounds(self: *Self, i: usize, j: usize, item: ELEMENT_TYPE) void {
+            const row = self.rows.items[j];
+            row[i] = item;
         }
 
         pub fn print(self: Self, writer: anytype, comptime element_format: []const u8) !void {
