@@ -54,6 +54,9 @@ const Position = struct {
 const SPACE = '.';
 const OBSTACLE = '#';
 
+/// On my old surface pro
+/// zig build:  1m 4s
+/// zig build --release=fast: 4s !!
 pub fn main() !void {
     const day = "day6";
     //const file_name = day ++ "/test_file.txt";
@@ -95,22 +98,20 @@ pub fn main() !void {
 }
 
 fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8) !Line {
+    _ = allocator;
+    try context.grid.addRow(line);
     if (context.guard_position == null) {
-        //scan the line to see if we can find the position
-        for (0..line.len) |x| {
-            if (line[x] == '^') {
+        //scan the added line to see if we can find the position
+        for (0..context.grid.width) |x| {
+            if (context.grid.itemAtU(x, context.grid.height - 1) == '^') {
                 context.guard_position = Position{
                     .x = @as(isize, @intCast(x)),
                     .y = @as(isize, @intCast(context.grid.height - 1)),
                 };
-                var copy = try allocator.dupe(u8, line);
-                copy[x] = SPACE;
-                try context.grid.addRow(copy);
-                return .{};
+                try context.grid.setItemAtU(x, context.grid.height - 1, SPACE);
             }
         }
     }
-    try context.grid.addRow(line);
     return .{};
 }
 
@@ -185,7 +186,7 @@ fn calculate_2(allocator: std.mem.Allocator, context: *Context) !void {
     var sum: usize = 0;
     for (0..context.grid.height) |y_u| {
         const y = @as(isize, @intCast(y_u));
-        try std.io.getStdOut().writer().print("Processing row {d}\n", .{y});
+        // try std.io.getStdOut().writer().print("Processing row {d}\n", .{y});
         for (0..context.grid.width) |x_u| {
             const x = @as(isize, @intCast(x_u));
             //Just carry on if there is an obstacle here
