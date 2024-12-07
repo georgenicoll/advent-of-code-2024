@@ -26,6 +26,12 @@ const Line = struct {
 // Timings on old surface laptop:
 // zig build: ~8s
 // zig build --release=fast: ~0.5s
+// Timings on trigkey - not using fized buffer allocator on part 2:
+// zig build: ~6s
+// zig build --release=fast: ~0.25s
+// Timings on trigkey - using fized buffer allocator on part 2:
+// zig build: ~5.8s
+// zig build --release=fast: ~0.25s
 pub fn main() !void {
     const day = "day7";
     //const file_name = day ++ "/test_file.txt";
@@ -83,10 +89,13 @@ fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8)
     };
 }
 
+const concat_expected_integer_digits = 10;
+const concat_combined_integer_digits = concat_expected_integer_digits * 2;
+
 fn concat(allocator: std.mem.Allocator, a: Num, b: Num) !Num {
-    var num1 = try std.ArrayList(u8).initCapacity(allocator, 20);
+    var num1 = try std.ArrayList(u8).initCapacity(allocator, concat_combined_integer_digits);
     defer num1.deinit();
-    var num2 = try std.ArrayList(u8).initCapacity(allocator, 10);
+    var num2 = try std.ArrayList(u8).initCapacity(allocator, concat_expected_integer_digits);
     defer num2.deinit();
 
     try num1.writer().print("{d}", .{a});
@@ -180,10 +189,16 @@ fn calculate_2(allocator: std.mem.Allocator, lines: std.ArrayList(Line)) !void {
     var stack = try std.ArrayList(Level).initCapacity(allocator, 2000);
     defer stack.deinit();
 
+    // Following can only be done as we know that we only need the allocater in is_possible for the conact call
+    // and this needs 2 buffers of size concat_combined_integer_digits + concat_expected_integer_digits
+    var buffer: [concat_combined_integer_digits + concat_expected_integer_digits]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const fba_allocator = fba.allocator();
+
     var sum: usize = 0;
 
     for (lines.items) |line| {
-        if (try is_possible(allocator, line, &stack, &[_]Op{ Op.Add, Op.Multiply, Op.Concat })) {
+        if (try is_possible(fba_allocator, line, &stack, &[_]Op{ Op.Add, Op.Multiply, Op.Concat })) {
             sum += line.result;
         }
     }
