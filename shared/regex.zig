@@ -6,14 +6,25 @@ const c = @cImport({
     @cInclude("regex_slim.h");
 });
 
+const Match = struct {
+    const Self = @This();
+
+    full_match: []const u8,
+    groups: std.ArrayList([]const u8),
+
+    fn deinit(self: Self) void {
+        self.groups.deinit();
+    }
+};
+
 const Matches = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    matches: std.ArrayList(*std.ArrayList(u8)),
+    matches: std.ArrayList(*Match),
 
     fn init(allocator: std.mem.Allocator) !Self {
-        const matches = std.ArrayList(*std.ArrayList(u8)).init(allocator);
+        const matches = std.ArrayList(*Match).init(allocator);
         return .{
             .allocator = allocator,
             .matches = matches,
@@ -22,16 +33,19 @@ const Matches = struct {
 
     pub fn deinit(self: Self) void {
         for (self.matches.items) |match| {
-            match.*.deinit();
+            match.*.deinit(); //free up the stuff contained by the ArrayList
+            self.allocator.destroy(match); //now free up the ArrayList on the heap itself
         }
         self.matches.deinit();
     }
 
-    fn appendMatch(self: *Self, match: []const u8) !void {
-        const map: *std.ArrayList(u8) = try self.allocator.create(std.ArrayList(u8));
-        map.* = std.ArrayList(u8).init(self.allocator);
-        try map.*.appendSlice(match);
-        try self.matches.append(map);
+    fn appendMatch(self: *Self, full_match: []const u8) !void {
+        const match: *Match = try self.allocator.create(Match);
+        match.* = Match{
+            .full_match = try self.allocator.dupe(u8, full_match),
+            .groups = std.ArrayList([]const u8).init(self.allocator),
+        };
+        try self.matches.append(match);
     }
 };
 
@@ -112,20 +126,20 @@ const eql = std.mem.eql;
 const testing_alloc = std.testing.allocator;
 
 test "matches simple" {
-    const regex1 = try Regex.init("nice");
-    defer regex1.deinit();
+    const regex = try Regex.init("nice");
+    defer regex.deinit();
 
-    try expect(regex1.numSubExpressions() == 0);
-    try expect(regex1.matches("this should match nice!"));
+    try expect(regex.numSubExpressions() == 0);
+    try expect(regex.matches("this should match nice!"));
 }
 
 test "exec simple" {
-    const regex1 = try Regex.init("nice");
-    defer regex1.deinit();
+    const regex = try Regex.init("nice");
+    defer regex.deinit();
 
-    try expect(regex1.numSubExpressions() == 0);
+    try expect(regex.numSubExpressions() == 0);
 
-    const result = try regex1.exec(testing_alloc, "this should nice match nice");
+    const result = try regex.exec(testing_alloc, "this should nice match nice");
     defer result.deinit();
     try expect(result.matches.items.len == 2);
     try expect(eql(u8, result.matches.items[0].items, "nice"));
@@ -133,12 +147,12 @@ test "exec simple" {
 }
 
 test "exec match :digit:" {
-    const regex1 = try Regex.init("[[:digit:]]+");
-    defer regex1.deinit();
+    const regex = try Regex.init("[[:digit:]]+");
+    defer regex.deinit();
 
-    try expect(regex1.numSubExpressions() == 0);
+    try expect(regex.numSubExpressions() == 0);
 
-    const result = try regex1.exec(testing_alloc, "bob 123 rita 456 sue: 85");
+    const result = try regex.exec(testing_alloc, "bob 123 rita 456 sue: 85");
     defer result.deinit();
     try expect(result.matches.items.len == 3);
     try expect(eql(u8, result.matches.items[0].items, "123"));
@@ -147,13 +161,27 @@ test "exec match :digit:" {
 }
 
 test "matches" {
-    const regex1 = try Regex.init("mul([:digit:]*,[:digit:]*)");
-    defer regex1.deinit();
+    const regex = try Regex.init("mul\\([[:digit:]]+,[[:digit:]]+\\)");
+    defer regex.deinit();
 
-    try expect(regex1.matches("do()something((mul(123,456)))))()"));
-    try expect(!regex1.matches("do()something((mu(123,456)))))()"));
+    try expect(regex.matches("do()something((mul(123,456)))))()"));
+    try expect(!regex.matches("do()something((mu(123,456)))))()"));
 }
 
 test "sub_expressions" {
-    try expect(false);
+    const regex = try Regex.init("mul\\(([[:digit:]]+),([[:digit:]]+)\\))");
+    defer regex.deinit();
+
+    try expect(regex.numSubExpressions() == 2);
+
+    const result = try regex.exec(testing_alloc, "hello please mul(12,3) and also mul(3,44), kthnxbye");
+    defer result.deinit();
+
+    try expect(result.matches.items.len == 2);
+    try expect(eql(u8, result.matches.items[0].full_match, "mul(12,3)"));
+    try expect(eql(u8, result.matches.items[0].groups.items[0], "12"));
+    try expect(eql(u8, result.matches.items[0].groups.items[1], "3"));
+    try expect(eql(u8, result.matches.items[1].full_match, "mul(3,4)"));
+    try expect(eql(u8, result.matches.items[1].groups.items[0], "3"));
+    try expect(eql(u8, result.matches.items[1].groups.items[1], "44"));
 }
