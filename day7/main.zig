@@ -23,6 +23,9 @@ const Line = struct {
     }
 };
 
+// Timings on old surface laptop:
+// zig build: ~8s
+// zig build --release=fast: ~0.5s
 pub fn main() !void {
     const day = "day7";
     //const file_name = day ++ "/test_file.txt";
@@ -50,11 +53,11 @@ pub fn main() !void {
     );
     defer parsed_lines.deinit();
 
-    const stdout = std.io.getStdOut();
-    for (parsed_lines.items) |line| {
-        try line.print(stdout.writer());
-        try stdout.writeAll("\n");
-    }
+    // const stdout = std.io.getStdOut();
+    // for (parsed_lines.items) |line| {
+    //     try line.print(stdout.writer());
+    //     try stdout.writeAll("\n");
+    // }
 
     try calculate(arena_allocator.allocator(), parsed_lines);
     try calculate_2(arena_allocator.allocator(), parsed_lines);
@@ -80,14 +83,29 @@ fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8)
     };
 }
 
+fn concat(allocator: std.mem.Allocator, a: Num, b: Num) !Num {
+    var num1 = try std.ArrayList(u8).initCapacity(allocator, 20);
+    defer num1.deinit();
+    var num2 = try std.ArrayList(u8).initCapacity(allocator, 10);
+    defer num2.deinit();
+
+    try num1.writer().print("{d}", .{a});
+    try num2.writer().print("{d}", .{b});
+    try num1.appendSlice(num2.items);
+
+    return try std.fmt.parseInt(Num, num1.items, 10);
+}
+
 const Op = enum {
     Add,
     Multiply,
+    Concat,
 
-    fn calculate(self: Op, a: Num, b: Num) Num {
+    fn calculate(self: Op, allocator: std.mem.Allocator, a: Num, b: Num) !Num {
         return switch (self) {
             Op.Add => |_| a + b,
             Op.Multiply => |_| a * b,
+            Op.Concat => |_| try concat(allocator, a, b),
         };
     }
 };
@@ -98,7 +116,7 @@ const Level = struct {
     result_so_far: Num,
 };
 
-fn is_possible(line: Line, stack: *std.ArrayList(Level), allowed_ops: []const Op) !bool {
+fn is_possible(allocator: std.mem.Allocator, line: Line, stack: *std.ArrayList(Level), allowed_ops: []const Op) !bool {
     stack.clearRetainingCapacity();
 
     //first ops. level correspond to left number's index
@@ -110,18 +128,12 @@ fn is_possible(line: Line, stack: *std.ArrayList(Level), allowed_ops: []const Op
         });
     }
 
-    try stack.append(Level{
-        .op = Op.Multiply,
-        .level = 0,
-        .result_so_far = line.numbers[0],
-    });
-
     while (stack.items.len > 0) {
         const level = stack.pop();
 
         const next_level = level.level + 1;
         const next_value = line.numbers[next_level];
-        const next_result_so_far = level.op.calculate(level.result_so_far, next_value);
+        const next_result_so_far = try level.op.calculate(allocator, level.result_so_far, next_value);
 
         //did we reach the end??? check the value - we don't add any more
         if (next_level >= line.numbers.len - 1) {
@@ -136,31 +148,27 @@ fn is_possible(line: Line, stack: *std.ArrayList(Level), allowed_ops: []const Op
             continue;
         }
 
-        //Otherwise, search the next 2 operations
-        try stack.append(Level{
-            .op = Op.Add,
-            .level = next_level,
-            .result_so_far = next_result_so_far,
-        });
-        try stack.append(Level{
-            .op = Op.Multiply,
-            .level = next_level,
-            .result_so_far = next_result_so_far,
-        });
+        //Otherwise, search the next operations
+        for (allowed_ops) |op| {
+            try stack.append(Level{
+                .op = op,
+                .level = next_level,
+                .result_so_far = next_result_so_far,
+            });
+        }
     }
 
     return false; //nothing worked
 }
 
 fn calculate(allocator: std.mem.Allocator, lines: std.ArrayList(Line)) !void {
-    //depth first search
     var stack = try std.ArrayList(Level).initCapacity(allocator, 2000);
     defer stack.deinit();
 
     var sum: usize = 0;
 
     for (lines.items) |line| {
-        if (try is_possible(line, &stack)) {
+        if (try is_possible(allocator, line, &stack, &[_]Op{ Op.Add, Op.Multiply })) {
             sum += line.result;
         }
     }
@@ -169,11 +177,24 @@ fn calculate(allocator: std.mem.Allocator, lines: std.ArrayList(Line)) !void {
 }
 
 fn calculate_2(allocator: std.mem.Allocator, lines: std.ArrayList(Line)) !void {
-    _ = allocator;
-    _ = lines;
+    var stack = try std.ArrayList(Level).initCapacity(allocator, 2000);
+    defer stack.deinit();
 
     var sum: usize = 0;
-    sum += 0;
+
+    for (lines.items) |line| {
+        if (try is_possible(allocator, line, &stack, &[_]Op{ Op.Add, Op.Multiply, Op.Concat })) {
+            sum += line.result;
+        }
+    }
 
     try std.io.getStdOut().writer().print("Part 2 Sum {d}\n", .{sum});
+}
+
+const expect = std.testing.expect;
+const testing_allocator = std.testing.allocator;
+
+test "concat" {
+    try expect(try concat(testing_allocator, 1, 2) == 12);
+    try expect(try concat(testing_allocator, 11, 387) == 11387);
 }
