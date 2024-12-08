@@ -35,7 +35,7 @@ pub fn Grid(comptime ELEMENT_TYPE: type) type {
         }
 
         pub fn itemAt(self: Self, i: isize, j: isize) ?ELEMENT_TYPE {
-            if (i < 0 or j < 0 or i >= self.width or j >= self.height) {
+            if (!self.inBounds(i, j)) {
                 return null;
             }
             const i_u = @as(usize, @intCast(i));
@@ -44,10 +44,18 @@ pub fn Grid(comptime ELEMENT_TYPE: type) type {
         }
 
         pub fn itemAtU(self: Self, i: usize, j: usize) ?ELEMENT_TYPE {
-            if (i >= self.width or j >= self.height) {
+            if (!self.inBoundsU(i, j)) {
                 return null;
             }
             return self.getItemWithinBounds(i, j);
+        }
+
+        pub fn inBounds(self: Self, i: isize, j: isize) bool {
+            return !(i < 0 or j < 0 or i >= self.width or j >= self.height);
+        }
+
+        pub fn inBoundsU(self: Self, i: usize, j: usize) bool {
+            return !(i >= self.width or j >= self.height);
         }
 
         fn getItemWithinBounds(self: Self, i: usize, j: usize) ELEMENT_TYPE {
