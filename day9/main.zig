@@ -201,97 +201,47 @@ fn calculate(allocator: std.mem.Allocator, line: []const u8) !void {
     try std.io.getStdOut().writer().print("Part 1 Sum {d}\n", .{sum});
 }
 
-fn pack2(allocator: std.mem.Allocator, disk_map: *DiskMap) !void {
-    //Get a map of free spaces and their indexes....
-    const lessThan = struct {
-        fn lessThan(context: void, a: usize, b: usize) std.math.Order {
-            _ = context;
-            return std.math.order(a, b);
-        }
-    }.lessThan;
-    var free_spaces = std.ArrayList(Area).initCapacity(allocator, (disk_map.areas / 2) + 1);
-    defer free_spaces.deinit();
-    //Now populate it
-    for (disk_map.areas.items, 0..) |area, index| {
-        if (area.free_space) {
-            const remaining_capacity = area.capacity - area.blocks.items.len;
-            if (remaining_capacity > 0) {
-                try free_spaces[remaining_capacity].add(index);
-            }
-        }
-    }
-
+fn pack2(disk_map: *DiskMap) !void {
     var back: usize = disk_map.areas.items.len - 1;
+    var non_full_index: usize = 1; //index into the first free space we haven't filled yet
 
     //move file_ids from the back to the front - in blocks where we can find space
     while (back > 0) {
-        // const stdout = std.io.getStdOut();
-        // try stdout.writeAll("\n\n");
-        // for (0..10) |queue_index| {
-        //     var q2 = free_spaces[queue_index];
-        //     try stdout.writer().print("{d} => ", .{queue_index});
-        //     for (q2.items) |item| {
-        //         try stdout.writer().print("{d} ", .{item});
-        //     }
-        //     const peeked = q2.peek();
-        //     if (peeked) |value| {
-        //         try stdout.writer().print(" - {d}\n", .{value});
-        //     } else {
-        //         try stdout.writeAll("\n");
-        //     }
-        // }
-        // try stdout.writeAll("\n");
-
         //find next populated at the back
         var back_area = disk_map.areas.items[back];
-        while (back_area.free_space) {
-            if (back == 0) {
-                break; //done
-            }
-            back -= 1;
-            back_area = disk_map.areas.items[back];
-        }
-        //find the first space that will accomodate this, if there is one, this could be larger than needed
+        //find next bit of space we can fit this into
         const required_capacity = back_area.blocks.items.len;
-        var capacity: usize = 9;
-        var free_area_index: ?usize = null;
-        outer: while (capacity >= required_capacity) {
-            var queue = free_spaces[capacity];
-            //find a free space - note we need to only move to an earlier index so drop
-            //any that we already went past
-            while (true) {
-                const index = queue.removeOrNull();
-                if (index == null) {
-                    break;
-                }
-                if (index.? >= back) {
-                    continue;
-                }
-                free_area_index = index.?;
-                break :outer;
+        var search_index: usize = non_full_index;
+        var space_to_fill_index: ?usize = null;
+        while (search_index < back) {
+            const area = disk_map.areas.items[search_index];
+            const remaining_capacity = area.capacity - area.blocks.items.len;
+            if (remaining_capacity >= required_capacity) {
+                space_to_fill_index = search_index;
+                break;
+            } else {
+                //look in next space
+                search_index += 2;
             }
-            //try the next capacity
-            capacity -= 1;
         }
-        if (free_area_index == null) {
-            //can't do it go to the next one
-            if (back > 0) {
-                back -= 1;
+        // if we didn't find anything move on to the next one
+        if (space_to_fill_index == null) {
+            if (back > 1) {
+                back -= 2;
             }
             continue;
         }
-        //add the items to the area
-        var free_area = disk_map.areas.items[free_area_index.?];
+        // found something, move it
+        var space_to_fill = disk_map.areas.items[space_to_fill_index.?];
         for (back_area.blocks.items) |block| {
-            try free_area.add(block);
+            try space_to_fill.add(block);
         }
         back_area.blocks.clearRetainingCapacity();
-        //if we have any free space left in the free space, add it back in in the new queue
-        const remaining_capacity = free_area.capacity - free_area.blocks.items.len;
-        var queue = free_spaces[remaining_capacity];
-        try queue.add(free_area_index.?);
-        if (back > 0) {
-            back -= 1;
+        back -= 2;
+        // if we have just filled the one we searched from...  move the non_full_index
+        const searching_from_area = disk_map.areas.items[non_full_index];
+        if (searching_from_area.blocks.items.len == searching_from_area.capacity) {
+            non_full_index += 2;
         }
 
         // try disk_map.print(stdout.writer());
@@ -303,12 +253,12 @@ fn calculate_2(allocator: std.mem.Allocator, line: []const u8) !void {
     var disk_map = try constructDiskMap(allocator, line);
     defer disk_map.deinit(allocator);
 
-    try disk_map.print(std.io.getStdOut().writer());
-    try std.io.getStdOut().writeAll("\n\n\n");
+    // try disk_map.print(std.io.getStdOut().writer());
+    // try std.io.getStdOut().writeAll("\n\n\n");
 
-    try pack2(allocator, &disk_map);
-    try disk_map.print(std.io.getStdOut().writer());
-    try std.io.getStdOut().writeAll("\n\n\n");
+    try pack2(&disk_map);
+    // try disk_map.print(std.io.getStdOut().writer());
+    // try std.io.getStdOut().writeAll("\n\n\n");
 
     var sum: u128 = 0;
     var overall_pos: usize = 0;
