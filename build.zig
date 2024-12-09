@@ -16,7 +16,13 @@ fn addExecutableWithName(
     exe.root_module.addAnonymousImport("shared", .{ .root_source_file = b.path("shared/shared.zig") });
     exe.linkLibrary(regex_lib);
     exe.addIncludePath(b.path("lib"));
+    // exe.addObjectFile(b.path("zig-out/lib/libregex_slim.a"));
     exe.linkLibC();
+    // exe.addCSourceFiles(.{
+    //     .files = &.{"lib/regex_slim.c"},
+    //     .flags = &.{"-std=c99"},
+    // });
+    //exe.addLibraryPath(b.path("zig-out/lib"));
     b.installArtifact(exe);
 }
 

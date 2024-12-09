@@ -24,18 +24,14 @@ const RegexTStart = extern struct {
 };
 // End translate-c
 
-const Match = struct {
+pub const Match = struct {
     const Self = @This();
 
     full_match: []const u8,
     groups: std.ArrayList([]const u8),
-
-    fn deinit(self: Self) void {
-        self.groups.deinit();
-    }
 };
 
-const Matches = struct {
+pub const Matches = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
@@ -51,7 +47,11 @@ const Matches = struct {
 
     pub fn deinit(self: Self) void {
         for (self.matches.items) |match| {
-            match.*.deinit(); //free up the stuff contained by the ArrayList
+            self.allocator.free(match.full_match);
+            for (match.groups.items) |group| {
+                self.allocator.free(group);
+            }
+            match.groups.deinit();
             self.allocator.destroy(match); //now free up the ArrayList on the heap itself
         }
         self.matches.deinit();
@@ -65,18 +65,29 @@ const Matches = struct {
         };
         try self.matches.append(match);
     }
+
+    fn appendGroup(self: *Self, group: []const u8) !void {
+        if (self.matches.items.len == 0) {
+            return error.NoItemsAdded;
+        }
+        var match = self.matches.items[self.matches.items.len - 1];
+        try match.groups.append(try self.allocator.dupe(u8, group));
+    }
 };
 
 /// RegEx
 ///
-/// init will compile the regex, then match or exec can be used to return matches
-const Regex = struct {
+/// init will compile the regex, then call match to see if a string matches, or call exec to return matches
+///
+/// For syntax see https://en.wikibooks.org/wiki/Regular_Expressions/POSIX_Basic_Regular_Expressions, this is
+/// using the Extended RegEx syntax.
+pub const Regex = struct {
     const Self = @This();
 
     inner: *c.regex_t,
     regext_start: *RegexTStart,
 
-    fn init(pattern: [:0]const u8) !Self {
+    pub fn init(pattern: [:0]const u8) !Self {
         const inner = c.alloc_regex_t().?;
         if (0 != c.regcomp(inner, pattern, c.REG_NEWLINE | c.REG_EXTENDED)) {
             return error.compile;
@@ -87,7 +98,7 @@ const Regex = struct {
         };
     }
 
-    fn deinit(self: Self) void {
+    pub fn deinit(self: Self) void {
         c.free_regex_t(self.inner);
     }
 
@@ -105,9 +116,10 @@ const Regex = struct {
     /// Execute the regex against the input string.
     /// Returns an array list containing array lists for each match - all should be cleaned up
     pub fn exec(self: Self, allocator: std.mem.Allocator, input: [:0]const u8) !Matches {
-        const match_size: usize = 1 + self.numSubExpressions();
+        const num_sub_expressions: usize = self.numSubExpressions();
+        const match_size: usize = 1 + num_sub_expressions;
         const pmatch = try allocator.alloc(c.regmatch_t, match_size);
-        defer allocator.destroy(pmatch);
+        defer allocator.free(pmatch);
 
         var re_matches = try Matches.init(allocator);
         var string = input;
@@ -126,6 +138,13 @@ const Regex = struct {
 
             const slice = string[start_match..end_match];
             try re_matches.appendMatch(slice);
+
+            for (0..num_sub_expressions) |sub| {
+                const start_sub = @as(usize, @intCast(pmatch[1 + sub].rm_so));
+                const end_sub = @as(usize, @intCast(pmatch[1 + sub].rm_eo));
+                const sub_slice = string[start_sub..end_sub];
+                try re_matches.appendGroup(sub_slice);
+            }
 
             string = string[end_match..];
         }
@@ -196,9 +215,11 @@ test "sub_expressions" {
 
     try expect(result.matches.items.len == 2);
     try expect(eql(u8, result.matches.items[0].full_match, "mul(12,3)"));
+    try expect(result.matches.items[0].groups.items.len == 2);
     try expect(eql(u8, result.matches.items[0].groups.items[0], "12"));
     try expect(eql(u8, result.matches.items[0].groups.items[1], "3"));
     try expect(eql(u8, result.matches.items[1].full_match, "mul(3,44)"));
+    try expect(result.matches.items[1].groups.items.len == 2);
     try expect(eql(u8, result.matches.items[1].groups.items[0], "3"));
     try expect(eql(u8, result.matches.items[1].groups.items[1], "44"));
 }
