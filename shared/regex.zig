@@ -6,6 +6,24 @@ const c = @cImport({
     @cInclude("regex_slim.h");
 });
 
+// Following structs and types taken from running zig translate-c -lc lib/regex_slim.h
+const struct_re_dfa_t_2 = opaque {};
+
+const __re_long_size_t = c_ulong;
+
+const reg_syntax_t = c_ulong;
+
+const RegexTStart = extern struct {
+    __buffer: ?*struct_re_dfa_t_2 = @import("std").mem.zeroes(?*struct_re_dfa_t_2),
+    __allocated: __re_long_size_t = @import("std").mem.zeroes(__re_long_size_t),
+    __used: __re_long_size_t = @import("std").mem.zeroes(__re_long_size_t),
+    __syntax: reg_syntax_t = @import("std").mem.zeroes(reg_syntax_t),
+    __fastmap: [*c]u8 = @import("std").mem.zeroes([*c]u8),
+    __translate: [*c]u8 = @import("std").mem.zeroes([*c]u8),
+    re_nsub: usize = @import("std").mem.zeroes(usize),
+};
+// End translate-c
+
 const Match = struct {
     const Self = @This();
 
@@ -49,16 +67,9 @@ const Matches = struct {
     }
 };
 
-const RegexTStart = struct {
-    buffer: c_uint, //pointer
-    allocated: c_ulong,
-    used: c_ulong,
-    syntax: c_ulong,
-    fastmap: usize, //pointer
-    translate: usize, //pointer
-    re_nsub: usize,
-};
-
+/// RegEx
+///
+/// init will compile the regex, then match or exec can be used to return matches
 const Regex = struct {
     const Self = @This();
 
@@ -84,23 +95,25 @@ const Regex = struct {
         return self.regext_start.re_nsub;
     }
 
-    pub fn matches(self: Self, input: [:0]const u8) bool {
-        const match_size = 1;
-        var pmatch: [match_size]c.regmatch_t = undefined;
-        return 0 == c.regexec(self.inner, input, match_size, &pmatch, 0);
+    pub fn matches(self: Self, allocator: std.mem.Allocator, input: [:0]const u8) !bool {
+        const match_size: usize = 1 + self.numSubExpressions();
+        const pmatch = try allocator.alloc(c.regmatch_t, match_size);
+        defer allocator.free(pmatch);
+        return 0 == c.regexec(self.inner, input, match_size, pmatch.ptr, 0);
     }
 
     /// Execute the regex against the input string.
     /// Returns an array list containing array lists for each match - all should be cleaned up
     pub fn exec(self: Self, allocator: std.mem.Allocator, input: [:0]const u8) !Matches {
-        const match_size = 1;
-        var pmatch: [match_size]c.regmatch_t = undefined;
+        const match_size: usize = 1 + self.numSubExpressions();
+        const pmatch = try allocator.alloc(c.regmatch_t, match_size);
+        defer allocator.destroy(pmatch);
 
         var re_matches = try Matches.init(allocator);
         var string = input;
 
         while (true) {
-            if (0 != c.regexec(self.inner, string, match_size, &pmatch, 0)) {
+            if (0 != c.regexec(self.inner, string, match_size, pmatch.ptr, 0)) {
                 break;
             }
 
@@ -130,7 +143,7 @@ test "matches simple" {
     defer regex.deinit();
 
     try expect(regex.numSubExpressions() == 0);
-    try expect(regex.matches("this should match nice!"));
+    try expect(try regex.matches(testing_alloc, "this should match nice!"));
 }
 
 test "exec simple" {
@@ -142,8 +155,8 @@ test "exec simple" {
     const result = try regex.exec(testing_alloc, "this should nice match nice");
     defer result.deinit();
     try expect(result.matches.items.len == 2);
-    try expect(eql(u8, result.matches.items[0].items, "nice"));
-    try expect(eql(u8, result.matches.items[1].items, "nice"));
+    try expect(eql(u8, result.matches.items[0].full_match, "nice"));
+    try expect(eql(u8, result.matches.items[1].full_match, "nice"));
 }
 
 test "exec match :digit:" {
@@ -155,33 +168,37 @@ test "exec match :digit:" {
     const result = try regex.exec(testing_alloc, "bob 123 rita 456 sue: 85");
     defer result.deinit();
     try expect(result.matches.items.len == 3);
-    try expect(eql(u8, result.matches.items[0].items, "123"));
-    try expect(eql(u8, result.matches.items[1].items, "456"));
-    try expect(eql(u8, result.matches.items[2].items, "85"));
+    try expect(eql(u8, result.matches.items[0].full_match, "123"));
+    try expect(eql(u8, result.matches.items[1].full_match, "456"));
+    try expect(eql(u8, result.matches.items[2].full_match, "85"));
 }
 
 test "matches" {
     const regex = try Regex.init("mul\\([[:digit:]]+,[[:digit:]]+\\)");
     defer regex.deinit();
 
-    try expect(regex.matches("do()something((mul(123,456)))))()"));
-    try expect(!regex.matches("do()something((mu(123,456)))))()"));
+    try expect(try regex.matches(testing_alloc, "do()something((mul(123,456)))))()"));
+    try expect(!(try regex.matches(testing_alloc, "do()something((mu(123,456)))))()")));
 }
 
 test "sub_expressions" {
-    const regex = try Regex.init("mul\\(([[:digit:]]+),([[:digit:]]+)\\))");
+    const regex = try Regex.init("mul\\(([[:digit:]]+),([[:digit:]]+)\\)");
     defer regex.deinit();
 
     try expect(regex.numSubExpressions() == 2);
 
-    const result = try regex.exec(testing_alloc, "hello please mul(12,3) and also mul(3,44), kthnxbye");
+    const text = "hello please mul(12,3) and also mul(3,44), kthnxbye";
+
+    try expect(try regex.matches(testing_alloc, text));
+
+    const result = try regex.exec(testing_alloc, text);
     defer result.deinit();
 
     try expect(result.matches.items.len == 2);
     try expect(eql(u8, result.matches.items[0].full_match, "mul(12,3)"));
     try expect(eql(u8, result.matches.items[0].groups.items[0], "12"));
     try expect(eql(u8, result.matches.items[0].groups.items[1], "3"));
-    try expect(eql(u8, result.matches.items[1].full_match, "mul(3,4)"));
+    try expect(eql(u8, result.matches.items[1].full_match, "mul(3,44)"));
     try expect(eql(u8, result.matches.items[1].groups.items[0], "3"));
     try expect(eql(u8, result.matches.items[1].groups.items[1], "44"));
 }
