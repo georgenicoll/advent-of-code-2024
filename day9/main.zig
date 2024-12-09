@@ -169,8 +169,6 @@ fn pack(disk_map: *DiskMap) !void {
         //move the last one and append to the front.
         const file_id = back_area.blocks.pop();
         try front_area.add(file_id);
-
-        // try disk_map.print(std.io.getStdOut().writer());
     }
 }
 
@@ -178,12 +176,7 @@ fn calculate(allocator: std.mem.Allocator, line: []const u8) !void {
     var disk_map = try constructDiskMap(allocator, line);
     defer disk_map.deinit(allocator);
 
-    // try disk_map.print(std.io.getStdOut().writer());
-    // try std.io.getStdOut().writeAll("\n\n\n");
-
     try pack(&disk_map);
-    // try disk_map.print(std.io.getStdOut().writer());
-    // try std.io.getStdOut().writeAll("\n\n\n");
 
     var sum: u128 = 0;
     var overall_pos: usize = 0;
@@ -243,9 +236,6 @@ fn pack2(disk_map: *DiskMap) !void {
         if (searching_from_area.blocks.items.len == searching_from_area.capacity) {
             non_full_index += 2;
         }
-
-        // try disk_map.print(stdout.writer());
-        // try stdout.writeAll("\n\n\n");
     }
 }
 
@@ -253,12 +243,7 @@ fn calculate_2(allocator: std.mem.Allocator, line: []const u8) !void {
     var disk_map = try constructDiskMap(allocator, line);
     defer disk_map.deinit(allocator);
 
-    // try disk_map.print(std.io.getStdOut().writer());
-    // try std.io.getStdOut().writeAll("\n\n\n");
-
     try pack2(&disk_map);
-    // try disk_map.print(std.io.getStdOut().writer());
-    // try std.io.getStdOut().writeAll("\n\n\n");
 
     var sum: u128 = 0;
     var overall_pos: usize = 0;
