@@ -42,7 +42,7 @@ const Positions = struct {
 };
 
 const Context = struct {
-    const Self= @This();
+    const Self = @This();
 
     grid: shared.aoc.Grid(u8),
     locations_by_frequency: std.AutoHashMap(u8, Positions),
@@ -51,8 +51,8 @@ const Context = struct {
         try self.grid.print(writer, "{c}");
         try writer.writeAll("\n");
         var it = self.locations_by_frequency.iterator();
-        while(it.next()) |entry| {
-            try writer.print("{c}: ", .{ entry.key_ptr.* });
+        while (it.next()) |entry| {
+            try writer.print("{c}: ", .{entry.key_ptr.*});
             try entry.value_ptr.*.print(writer);
             try writer.writeAll("\n");
         }
@@ -114,7 +114,7 @@ fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8)
     const j = @as(isize, @intCast(context.grid.height - 1));
     for (line, 0..) |char, i| {
         if (char != Space and char != Space2) {
-            const position = Position {
+            const position = Position{
                 .i = @as(isize, @intCast(i)),
                 .j = j,
             };
@@ -139,15 +139,15 @@ fn calculate(allocator: std.mem.Allocator, context: Context) !void {
         const positions = node.value_ptr.*;
         for (0..positions.positions.items.len - 1) |a| {
             const position_a = positions.positions.items[a];
-            for (a+1..positions.positions.items.len) |b| {
+            for (a + 1..positions.positions.items.len) |b| {
                 const position_b = positions.positions.items[b];
                 //calculate anti node positions and add to map if not out_of_bound
-                const diff = Position {
+                const diff = Position{
                     .i = position_b.i - position_a.i,
                     .j = position_b.j - position_a.j,
                 };
                 //antinode b to a
-                const antinode_b_a = Position {
+                const antinode_b_a = Position{
                     .i = position_a.i - diff.i,
                     .j = position_a.j - diff.j,
                 };
@@ -155,7 +155,7 @@ fn calculate(allocator: std.mem.Allocator, context: Context) !void {
                     try antinode_positions.put(antinode_b_a, {});
                 }
                 //antinode a to b
-                const antinode_a_b = Position {
+                const antinode_a_b = Position{
                     .i = position_b.i + diff.i,
                     .j = position_b.j + diff.j,
                 };
@@ -180,10 +180,10 @@ fn calculate_2(allocator: std.mem.Allocator, context: Context) !void {
         const positions = node.value_ptr.*;
         for (0..positions.positions.items.len - 1) |a| {
             const position_a = positions.positions.items[a];
-            for (a+1..positions.positions.items.len) |b| {
+            for (a + 1..positions.positions.items.len) |b| {
                 const position_b = positions.positions.items[b];
                 //calculate anti node positions and add to map if not out_of_bound
-                const diff = Position {
+                const diff = Position{
                     .i = position_b.i - position_a.i,
                     .j = position_b.j - position_a.j,
                 };
@@ -194,7 +194,7 @@ fn calculate_2(allocator: std.mem.Allocator, context: Context) !void {
                     //add the antinode
                     try antinode_positions.put(current_pos, {});
                     //move to the next position
-                    current_pos = Position {
+                    current_pos = Position{
                         .i = current_pos.i - diff.i,
                         .j = current_pos.j - diff.j,
                     };
@@ -205,7 +205,7 @@ fn calculate_2(allocator: std.mem.Allocator, context: Context) !void {
                     //add the antinode
                     try antinode_positions.put(current_pos, {});
                     //move to the next position
-                    current_pos = Position {
+                    current_pos = Position{
                         .i = current_pos.i + diff.i,
                         .j = current_pos.j + diff.j,
                     };
