@@ -56,4 +56,5 @@ pub fn build(b: *std.Build) void {
     addExecutableWithName("day8", b, regex_lib, target, optimize);
     addExecutableWithName("day9", b, regex_lib, target, optimize);
     addExecutableWithName("day10", b, regex_lib, target, optimize);
+    addExecutableWithName("day11", b, regex_lib, target, optimize);
 }

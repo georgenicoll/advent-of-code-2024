@@ -1,3 +1,9 @@
 {
     "zig-language-extras.testArgs": "-lc -cflags -std=c99 -- lib/regex_slim.c -Ilib",
+    "zig.zls.enabled": "on",
+    "cSpell.words": [
+        "deinit",
+        "isize",
+        "usize"
+    ],
 }
