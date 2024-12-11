@@ -7,6 +7,7 @@ fn addExecutableWithName(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 ) void {
+    _ = regex_lib;
     const exe = b.addExecutable(.{
         .name = name,
         .root_source_file = b.path(name ++ "/main.zig"),
@@ -14,15 +15,6 @@ fn addExecutableWithName(
         .optimize = optimize,
     });
     exe.root_module.addAnonymousImport("shared", .{ .root_source_file = b.path("shared/shared.zig") });
-    exe.linkLibrary(regex_lib);
-    exe.addIncludePath(b.path("lib"));
-    // exe.addObjectFile(b.path("zig-out/lib/libregex_slim.a"));
-    exe.linkLibC();
-    // exe.addCSourceFiles(.{
-    //     .files = &.{"lib/regex_slim.c"},
-    //     .flags = &.{"-std=c99"},
-    // });
-    //exe.addLibraryPath(b.path("zig-out/lib"));
     b.installArtifact(exe);
 }
 
@@ -36,10 +28,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .target = target,
     });
+    regex_lib.addIncludePath(b.path("include/"));
     regex_lib.addCSourceFiles(.{
-        .files = &.{"lib/regex_slim.c"},
+        .files = &.{"shared/regex_slim.c"},
         .flags = &.{"-std=c99"},
     });
+    // regex_lib.installHeader(b.path("include/regex_slim.h"), "include/regex_slim.h");
     regex_lib.linkLibC();
     b.installArtifact(regex_lib);
 

@@ -106,16 +106,17 @@ pub const Regex = struct {
         return self.regext_start.re_nsub;
     }
 
-    pub fn matches(self: Self, allocator: std.mem.Allocator, input: [:0]const u8) !bool {
+    pub fn matches(self: Self, allocator: std.mem.Allocator, input: []const u8) !bool {
         const match_size: usize = 1 + self.numSubExpressions();
         const pmatch = try allocator.alloc(c.regmatch_t, match_size);
         defer allocator.free(pmatch);
-        return 0 == c.regexec(self.inner, input, match_size, pmatch.ptr, 0);
+        const input_c: [*c]const u8 = @ptrCast(input);
+        return 0 == c.regexec(self.inner, input_c, match_size, pmatch.ptr, 0);
     }
 
     /// Execute the regex against the input string.
     /// Returns an array list containing array lists for each match - all should be cleaned up
-    pub fn exec(self: Self, allocator: std.mem.Allocator, input: [:0]const u8) !Matches {
+    pub fn exec(self: Self, allocator: std.mem.Allocator, input: []const u8) !Matches {
         const num_sub_expressions: usize = self.numSubExpressions();
         const match_size: usize = 1 + num_sub_expressions;
         const pmatch = try allocator.alloc(c.regmatch_t, match_size);
@@ -125,7 +126,8 @@ pub const Regex = struct {
         var string = input;
 
         while (true) {
-            if (0 != c.regexec(self.inner, string, match_size, pmatch.ptr, 0)) {
+            const string_c: [*c]const u8 = @ptrCast(string);
+            if (0 != c.regexec(self.inner, string_c, match_size, pmatch.ptr, 0)) {
                 break;
             }
 
