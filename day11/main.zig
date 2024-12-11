@@ -251,7 +251,7 @@ fn blink(
     );
 }
 
-fn calculate(allocator: std.mem.Allocator, stack: *std.ArrayList(*Node), stones: *std.ArrayList(*Node), repetitions: usize) !usize {
+fn doBlinks(allocator: std.mem.Allocator, stack: *std.ArrayList(*Node), stones: *std.ArrayList(*Node), repetitions: usize) !void {
     var number_as_string = try std.ArrayList(u8).initCapacity(allocator, 20);
     defer number_as_string.deinit();
 
@@ -266,15 +266,13 @@ fn calculate(allocator: std.mem.Allocator, stack: *std.ArrayList(*Node), stones:
         //const rep_count = try countStones(allocator, &stack, stones);
         //try std.io.getStdOut().writer().print(":{d}\n", .{rep_count});
     }
-
-    const count = try countStones(allocator, stack, stones);
-    return count;
 }
 
 fn calculate1(allocator: std.mem.Allocator, stones: *std.ArrayList(*Node)) !void {
     var stack = try std.ArrayList(*Node).initCapacity(allocator, 1000);
     defer stack.deinit();
-    const count = try calculate(allocator, &stack, stones, 25);
+    try doBlinks(allocator, &stack, stones, 25);
+    const count = try countStones(allocator, &stack, stones);
     try std.io.getStdOut().writer().print("Part 1 Count {d}\n", .{count});
 }
 
@@ -335,7 +333,7 @@ fn getIterationNumbers(
     };
     try stones.append(&stone);
 
-    _ = try calculate(allocator, stack, &stones, repetitions);
+    try doBlinks(allocator, stack, &stones, repetitions);
     try gatherNumbers(allocator, stack, numbers, &stones);
     return numbers;
 }
