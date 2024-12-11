@@ -357,7 +357,7 @@ fn calculate2(allocator: std.mem.Allocator, stones: *std.ArrayList(*Node)) !void
         try this_iter_nums.put(stone.value.?, 1);
     }
 
-    const rep_size: usize = 1;
+    const rep_size: usize = 5;
     const num_iters: usize = 75 / rep_size;
     for (0..num_iters) |i| { //25 * 3 is 75
         numbers_running_total.clearRetainingCapacity();
