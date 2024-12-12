@@ -37,8 +37,8 @@ pub fn main() !void {
     );
     defer parsed_lines.deinit();
 
-    const stdout = std.io.getStdOut();
-    try context.grid.print(stdout.writer(), "{c}");
+    // const stdout = std.io.getStdOut();
+    // try context.grid.print(stdout.writer(), "{c}");
 
     try calculate(arena_allocator.allocator(), &context);
     try calculate_2(arena_allocator.allocator(), &context);
@@ -211,7 +211,7 @@ fn iThenj(ctx: void, lhs: Plot, rhs: Plot) bool {
     return lhs.i < rhs.i;
 }
 
-// Order by i and then j
+// Order by j and then i
 fn jTheni(ctx: void, lhs: Plot, rhs: Plot) bool {
     _ = ctx;
     if (lhs.j == rhs.j) {
@@ -220,12 +220,12 @@ fn jTheni(ctx: void, lhs: Plot, rhs: Plot) bool {
     return lhs.j < rhs.j;
 }
 
-//New fence if there is a greater than 1 jump in j, or a change in i
+//New fence if there is a greater than 1 jump in j, or a change in i (assumption i then j ordering)
 fn verticalNewFence(plotA: Plot, plotB: Plot) bool {
     return (@abs(plotB.j - plotA.j) > 1) or (plotB.i != plotA.i);
 }
 
-//New fence if there is a greater than 1 jump in i, or a change in j
+//New fence if there is a greater than 1 jump in i, or a change in j  (assumption j then i ordering)
 fn horizontalNewFence(plotA: Plot, plotB: Plot) bool {
     return (@abs(plotB.i - plotA.i) > 1) or (plotB.j != plotA.j);
 }
@@ -253,8 +253,9 @@ fn calculateSides(
     if (plots.items.len == 1) {
         return 1;
     }
+    // Sort according to the lessThanFn
     std.mem.sort(Plot, plots.items, {}, lessThanFn);
-    // Loop through.  We have a new fence if we have a >1 jump in j, or a any change in i
+    // Loop through.  Add a new fence if the newFenceFn tells us to
     var num_fences: usize = 1;
     for (0..plots.items.len - 1) |p| {
         const plotA = plots.items[p];
