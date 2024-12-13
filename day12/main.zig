@@ -238,9 +238,8 @@ fn calculateSides(
     lessThanFn: fn (void, Plot, Plot) bool,
     newFenceFn: fn (Plot, Plot) bool,
 ) !usize {
-    //Left hand sides
-    //all plots with nothing to their left
     plots.clearRetainingCapacity();
+    //find all plots in this region with nothing to the given side
     var plot_it = region.plots.keyIterator();
     while (plot_it.next()) |plot| {
         const other_plot = plot.move(side);
