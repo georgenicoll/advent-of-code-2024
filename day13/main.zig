@@ -137,7 +137,10 @@ const NUM_AS_FLOAT = f128;
 const DIFF = 0.0000000001;
 
 fn solve(machine: Machine) ?Presses {
-    // 2 simultaneous equations with 2 unknowns...rearranges to
+    // 2 simultaneous equations with 2 unknowns...
+    // 1: A.a_x + B.b_x = p_x
+    // 2: A.a_y + B.b_y = p_y
+    // rearranges to
     // B = (p_x.a_y - p_y.a_x) / (b_x.a_y - b_y.a_x)
     const a_x = @as(NUM_AS_FLOAT, @floatFromInt(machine.button_a.x));
     const a_y = @as(NUM_AS_FLOAT, @floatFromInt(machine.button_a.y));
