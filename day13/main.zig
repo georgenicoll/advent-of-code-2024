@@ -215,5 +215,5 @@ fn calculate_2(allocator: std.mem.Allocator, machines: *std.ArrayList(Machine)) 
         }
     }
 
-    try std.io.getStdOut().writer().print("Part 1 Total Cost {d}\n", .{sum});
+    try std.io.getStdOut().writer().print("Part 2 Total Cost {d}\n", .{sum});
 }
