@@ -136,6 +136,19 @@ const Presses = struct {
 const NUM_AS_FLOAT = f128;
 const DIFF = 0.0000000001;
 
+fn positiveIntFromFloatNoRounding(num: NUM_AS_FLOAT) ?usize {
+    if (num < 0) {
+        return null;
+    }
+    const num_int: usize = @intFromFloat(num);
+    //Check is an integer
+    const back_to_float = @as(NUM_AS_FLOAT, @floatFromInt(num_int));
+    if (@abs(back_to_float - num) > DIFF) {
+        return null;
+    }
+    return num_int;
+}
+
 fn solve(machine: Machine) ?Presses {
     // 2 simultaneous equations with 2 unknowns...
     // 1: A.a_x + B.b_x = p_x
@@ -150,31 +163,18 @@ fn solve(machine: Machine) ?Presses {
     const p_y = @as(NUM_AS_FLOAT, @floatFromInt(machine.prize.y));
 
     const num_b_presses = (p_x * a_y - p_y * a_x) / (b_x * a_y - b_y * a_x);
-    if (num_b_presses < 0) {
-        return null;
-    }
-    const num_b_int: usize = @intFromFloat(num_b_presses);
-    // Check integer
-    const b_back_to_float = @as(NUM_AS_FLOAT, @floatFromInt(num_b_int));
-    if (@abs(b_back_to_float - num_b_presses) > DIFF) {
+    const b = positiveIntFromFloatNoRounding(num_b_presses);
+    if (b == null) {
         return null;
     }
 
     const num_a_presses = (p_x - num_b_presses * b_x) / a_x;
-    if (num_a_presses < 0) {
-        return null;
-    }
-    const num_a_int: usize = @intFromFloat(num_a_presses);
-    //Check integer
-    const a_back_to_float = @as(NUM_AS_FLOAT, @floatFromInt(num_a_int));
-    if (@abs(a_back_to_float - num_a_presses) > DIFF) {
+    const a = positiveIntFromFloatNoRounding(num_a_presses);
+    if (a == null) {
         return null;
     }
 
-    return .{
-        .a = num_a_int,
-        .b = num_b_int,
-    };
+    return .{ .a = a.?, .b = b.? };
 }
 
 fn calculate(allocator: std.mem.Allocator, machines: *std.ArrayList(Machine)) !void {
