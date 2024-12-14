@@ -15,11 +15,9 @@ const Context2 = struct {
     ops: *std.ArrayList(Op),
 };
 
-const Num = i64;
-
 const Mul = struct {
-    a: Num,
-    b: Num,
+    a: i64,
+    b: i64,
 
     pub fn print(self: Mul, writer: anytype) !void {
         try writer.print("mul({d},{d})", self);
@@ -57,14 +55,12 @@ const Op = union(enum) {
 const Line = struct {};
 
 pub fn main() !void {
-    const stdout = std.io.getStdOut();
-
-    const file_name = "day3/test_file.txt";
+    //const file_name = "day3/test_file.txt";
     //const file_name = "day3/test_cases.txt";
-    //const file_name = "day3/input.txt";
-    const file_name2 = "day3/test_file2.txt";
+    const file_name = "day3/input.txt";
+    //const file_name2 = "day3/test_file2.txt";
     //const file_name2 = "day3/test_cases.txt";
-    //const file_name2 = "day3/input.txt";
+    const file_name2 = "day3/input.txt";
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -91,10 +87,11 @@ pub fn main() !void {
     );
     defer parsed_lines1.deinit();
 
-    for (context1.ops.items) |op| {
-        try op.print(stdout.writer());
-        try stdout.writeAll("\n");
-    }
+    // const stdout = std.io.getStdOut();
+    // for (context1.ops.items) |op| {
+    //     try op.print(stdout.writer());
+    //     try stdout.writeAll("\n");
+    // }
 
     try calculate(arena_allocator.allocator(), context1.ops);
 
@@ -113,25 +110,70 @@ pub fn main() !void {
     );
     defer parsed_lines2.deinit();
 
-    for (context2.ops.items) |op| {
-        try op.print(stdout.writer());
-        try stdout.writeAll("\n");
-    }
+    // const stdout = std.io.getStdOut();
+    // for (context2.ops.items) |op| {
+    //     try op.print(stdout.writer());
+    //     try stdout.writeAll("\n");
+    // }
 
     try calculate_2(arena_allocator.allocator(), context2.ops);
 }
 
-fn parse_line1(allocator: std.mem.Allocator, context: Context1, line: []const u8) !Line {
-    const regex = try shared.regex.Regex.init("(mul)\\(([:digit:]+),([:digit:])\\)");
-    defer regex.deinit();
+fn parse_mul(parser: *process.LineParser(), next_string: []const u8) ?Mul {
+    //is there a 'mul' immediately before it?
+    if (next_string.len < 3) {
+        return null;
+    }
+    const possible_mul = next_string[next_string.len - 3 ..];
+    if (!eql(u8, "mul", possible_mul)) {
+        return null;
+    }
+    // Expect mul(a,b)
+    if (parser.first_delimiter() != '(') {
+        return null;
+    }
 
-    const matches = try regex.exec(allocator, line);
-    for (matches.matches.items) |match| {
-        const num1 = match.groups.items[1];
-        const num2 = match.groups.items[2];
-        const a = try std.fmt.parseInt(Num, num1, 10);
-        const b = try std.fmt.parseInt(Num, num2, 10);
-        try context.ops.append(Mul{ .a = a, .b = b });
+    // try to read an int
+    const a = parser.consume_int(i64) catch null;
+    if (a == null) {
+        return null;
+    }
+    // needs a , as the delimiter
+    if (parser.peek_char() != ',') {
+        return null;
+    }
+    //consume the ,
+    _ = parser.read_char();
+
+    // try to read an int
+    const b = parser.consume_int(i64) catch null;
+    if (b == null) {
+        return null;
+    }
+    // needs a ) as the delimiter
+    if (parser.peek_char() != ')') {
+        return null;
+    }
+    //consume the )
+    _ = parser.read_char();
+
+    return Mul{ .a = a.?, .b = b.? };
+}
+
+fn parse_line1(allocator: std.mem.Allocator, context: Context1, line: []const u8) !Line {
+    var parser = process.LineParser().init(allocator, context.delimiters, line);
+    defer parser.deinit();
+
+    //read all of the ops
+    while (parser.has_more()) {
+        //read to the next '('
+        const next_string = try parser.read_string();
+        defer parser.allocator.free(next_string);
+
+        const mul = parse_mul(&parser, next_string);
+        if (mul) |value| {
+            try context.ops.append(value);
+        }
     }
 
     return .{};
@@ -174,10 +216,10 @@ fn parse_line2(allocator: std.mem.Allocator, context: Context2, line: []const u8
         }
 
         //is this a mul
-        // const mul = parse_mul(&parser, next_string);
-        // if (mul) |value| {
-        //     try context.ops.append(Op{ .mul = value });
-        // }
+        const mul = parse_mul(&parser, next_string);
+        if (mul) |value| {
+            try context.ops.append(Op{ .mul = value });
+        }
     }
 
     return .{};

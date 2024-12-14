@@ -1,5 +1,5 @@
 {
-    "zig-language-extras.testArgs": "-lc -cflags -std=c99 -- shared/regex_slim.c -Iinclude",
+    "zig-language-extras.testArgs": "-lc -cflags -std=c99 -- shared/src/regex_slim.c -Ishared/include",
     "zig.zls.enabled": "on",
     "cSpell.words": [
         "anyerror",

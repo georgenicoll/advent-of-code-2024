@@ -27,8 +27,22 @@ const RegexTStart = extern struct {
 pub const Match = struct {
     const Self = @This();
 
+    allocator: std.mem.Allocator,
     full_match: []const u8,
     groups: std.ArrayList([]const u8),
+
+    fn init(allocator: std.mem.Allocator, full_match: []const u8) !Self {
+        return Self{
+            .allocator = allocator,
+            .full_match = try allocator.dupe(u8, full_match),
+            .groups = std.ArrayList([]const u8).init(allocator),
+        };
+    }
+
+    fn deinit(self: Self) void {
+        self.allocator.free(self.full_match);
+        self.groups.deinit();
+    }
 };
 
 pub const Matches = struct {
@@ -47,31 +61,14 @@ pub const Matches = struct {
 
     pub fn deinit(self: Self) void {
         for (self.matches.items) |match| {
-            self.allocator.free(match.full_match);
-            for (match.groups.items) |group| {
-                self.allocator.free(group);
-            }
-            match.groups.deinit();
-            self.allocator.destroy(match); //now free up the ArrayList on the heap itself
+            match.deinit();
+            self.allocator.destroy(match);
         }
         self.matches.deinit();
     }
 
-    fn appendMatch(self: *Self, full_match: []const u8) !void {
-        const match: *Match = try self.allocator.create(Match);
-        match.* = Match{
-            .full_match = try self.allocator.dupe(u8, full_match),
-            .groups = std.ArrayList([]const u8).init(self.allocator),
-        };
+    fn append(self: *Self, match: *Match) !void {
         try self.matches.append(match);
-    }
-
-    fn appendGroup(self: *Self, group: []const u8) !void {
-        if (self.matches.items.len == 0) {
-            return error.NoItemsAdded;
-        }
-        var match = self.matches.items[self.matches.items.len - 1];
-        try match.groups.append(try self.allocator.dupe(u8, group));
     }
 };
 
@@ -115,15 +112,36 @@ pub const Regex = struct {
     }
 
     /// Execute the regex against the input string.
-    /// Returns an array list containing array lists for each match - all should be cleaned up
+    /// Returns a Matches struct containing array lists for each match - deinit must be called on the returned Matches
     pub fn exec(self: Self, allocator: std.mem.Allocator, input: []const u8) !Matches {
+        var re_matches = try Matches.init(allocator);
+        const matchFound = struct {
+            fn matchFound(matches_context: *Matches, match: *Match) !bool {
+                try matches_context.append(match);
+                return true; //we are taking ownership
+            }
+        }.matchFound;
+        try self.execWithCallback(*Matches, allocator, input, &re_matches, matchFound);
+        return re_matches;
+    }
+
+    pub fn execWithCallback(
+        self: Self,
+        comptime Context: type,
+        allocator: std.mem.Allocator,
+        input: []const u8,
+        context: Context,
+        matchFoundFn: fn (Context, match: *Match) anyerror!bool, //Return true to take ownership
+    ) !void {
         const num_sub_expressions: usize = self.numSubExpressions();
         const match_size: usize = 1 + num_sub_expressions;
         const pmatch = try allocator.alloc(c.regmatch_t, match_size);
         defer allocator.free(pmatch);
 
-        var re_matches = try Matches.init(allocator);
-        var string = input;
+        const input_null_terminated: [:0]u8 = try allocator.allocSentinel(u8, input.len, 0);
+        defer allocator.free(input_null_terminated);
+        std.mem.copyForwards(u8, input_null_terminated, input);
+        var string = input_null_terminated;
 
         while (true) {
             const string_c: [*c]const u8 = @ptrCast(string);
@@ -139,19 +157,28 @@ pub const Regex = struct {
             }
 
             const slice = string[start_match..end_match];
-            try re_matches.appendMatch(slice);
 
+            const match: *Match = try allocator.create(Match);
+            match.* = try Match.init(allocator, slice);
             for (0..num_sub_expressions) |sub| {
-                const start_sub = @as(usize, @intCast(pmatch[1 + sub].rm_so));
+                const start_sub = @as(isize, @intCast(pmatch[1 + sub].rm_so));
+                if (start_sub < 0) {
+                    continue;
+                }
                 const end_sub = @as(usize, @intCast(pmatch[1 + sub].rm_eo));
-                const sub_slice = string[start_sub..end_sub];
-                try re_matches.appendGroup(sub_slice);
+                const sub_slice = string[@as(usize, @intCast(start_sub))..end_sub];
+                try match.groups.append(sub_slice);
+            }
+            if (!(try matchFoundFn(context, match))) {
+                match.deinit();
+                allocator.destroy(match);
             }
 
+            if (end_match >= string.len) {
+                break; //we got to the end of the string
+            }
             string = string[end_match..];
         }
-
-        return re_matches;
     }
 };
 
@@ -202,6 +229,32 @@ test "matches" {
     try expect(!(try regex.matches(testing_alloc, "do()something((mu(123,456)))))()")));
 }
 
+test "match_at_start_and_end" {
+    const regex = try Regex.init("(mul)\\(([[:digit:]]+),([[:digit:]]+)\\)");
+    defer regex.deinit();
+
+    try expect(regex.numSubExpressions() == 3);
+
+    const text = "mul(12,3) and mul(3,44)";
+
+    try expect(try regex.matches(testing_alloc, text));
+
+    const result = try regex.exec(testing_alloc, text);
+    defer result.deinit();
+
+    try expect(result.matches.items.len == 2);
+    try expect(eql(u8, result.matches.items[0].full_match, "mul(12,3)"));
+    try expect(result.matches.items[0].groups.items.len == 3);
+    try expect(eql(u8, result.matches.items[0].groups.items[0], "mul"));
+    try expect(eql(u8, result.matches.items[0].groups.items[1], "12"));
+    try expect(eql(u8, result.matches.items[0].groups.items[2], "3"));
+    try expect(eql(u8, result.matches.items[1].full_match, "mul(3,44)"));
+    try expect(result.matches.items[1].groups.items.len == 3);
+    try expect(eql(u8, result.matches.items[1].groups.items[0], "mul"));
+    try expect(eql(u8, result.matches.items[1].groups.items[1], "3"));
+    try expect(eql(u8, result.matches.items[1].groups.items[2], "44"));
+}
+
 test "sub_expressions" {
     const regex = try Regex.init("mul\\(([[:digit:]]+),([[:digit:]]+)\\)");
     defer regex.deinit();
@@ -224,4 +277,34 @@ test "sub_expressions" {
     try expect(result.matches.items[1].groups.items.len == 2);
     try expect(eql(u8, result.matches.items[1].groups.items[0], "3"));
     try expect(eql(u8, result.matches.items[1].groups.items[1], "44"));
+}
+
+test "or_expression" {
+    const regex = try Regex.init("(mul)\\(([[:digit:]]+),([[:digit:]]+)\\)|(do)\\(\\)|(don't)\\(\\)");
+    defer regex.deinit();
+
+    try expect(regex.numSubExpressions() == 5);
+
+    const text = "xmul(1,2)ab%do()hgfdon't()bob";
+
+    try expect(try regex.matches(testing_alloc, text));
+
+    const result = try regex.exec(testing_alloc, text);
+    defer result.deinit();
+
+    try expect(result.matches.items.len == 3);
+
+    try expect(eql(u8, result.matches.items[0].full_match, "mul(1,2)"));
+    try expect(result.matches.items[0].groups.items.len == 3);
+    try expect(eql(u8, result.matches.items[0].groups.items[0], "mul"));
+    try expect(eql(u8, result.matches.items[0].groups.items[1], "1"));
+    try expect(eql(u8, result.matches.items[0].groups.items[2], "2"));
+
+    try expect(eql(u8, result.matches.items[1].full_match, "do()"));
+    try expect(result.matches.items[1].groups.items.len == 1);
+    try expect(eql(u8, result.matches.items[1].groups.items[0], "do"));
+
+    try expect(eql(u8, result.matches.items[2].full_match, "don't()"));
+    try expect(result.matches.items[2].groups.items.len == 1);
+    try expect(eql(u8, result.matches.items[2].groups.items[0], "don't"));
 }

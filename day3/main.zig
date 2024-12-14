@@ -6,18 +6,18 @@ const utils = shared.utils;
 const eql = std.mem.eql;
 
 const Context1 = struct {
-    delimiters: std.AutoHashMap(u8, bool),
     ops: *std.ArrayList(Mul),
 };
 
 const Context2 = struct {
-    delimiters: std.AutoHashMap(u8, bool),
     ops: *std.ArrayList(Op),
 };
 
+const Num = i64;
+
 const Mul = struct {
-    a: i64,
-    b: i64,
+    a: Num,
+    b: Num,
 
     pub fn print(self: Mul, writer: anytype) !void {
         try writer.print("mul({d},{d})", self);
@@ -55,6 +55,8 @@ const Op = union(enum) {
 const Line = struct {};
 
 pub fn main() !void {
+    // const stdout = std.io.getStdOut();
+
     //const file_name = "day3/test_file.txt";
     //const file_name = "day3/test_cases.txt";
     const file_name = "day3/input.txt";
@@ -68,15 +70,10 @@ pub fn main() !void {
     var arena_allocator = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena_allocator.deinit();
 
-    var delimiters = std.AutoHashMap(u8, bool).init(arena_allocator.allocator());
-    try delimiters.put('(', true);
-    try delimiters.put(')', true);
-
     var ops1 = std.ArrayList(Mul).init(arena_allocator.allocator());
     defer ops1.deinit();
 
     const context1 = Context1{
-        .delimiters = delimiters,
         .ops = &ops1,
     };
 
@@ -87,7 +84,6 @@ pub fn main() !void {
     );
     defer parsed_lines1.deinit();
 
-    // const stdout = std.io.getStdOut();
     // for (context1.ops.items) |op| {
     //     try op.print(stdout.writer());
     //     try stdout.writeAll("\n");
@@ -99,7 +95,6 @@ pub fn main() !void {
     defer ops2.deinit();
 
     const context2 = Context2{
-        .delimiters = delimiters,
         .ops = &ops2,
     };
 
@@ -110,7 +105,6 @@ pub fn main() !void {
     );
     defer parsed_lines2.deinit();
 
-    // const stdout = std.io.getStdOut();
     // for (context2.ops.items) |op| {
     //     try op.print(stdout.writer());
     //     try stdout.writeAll("\n");
@@ -119,107 +113,43 @@ pub fn main() !void {
     try calculate_2(arena_allocator.allocator(), context2.ops);
 }
 
-fn parse_mul(parser: *process.LineParser(), next_string: []const u8) ?Mul {
-    //is there a 'mul' immediately before it?
-    if (next_string.len < 3) {
-        return null;
-    }
-    const possible_mul = next_string[next_string.len - 3 ..];
-    if (!eql(u8, "mul", possible_mul)) {
-        return null;
-    }
-    // Expect mul(a,b)
-    if (parser.first_delimiter() != '(') {
-        return null;
-    }
-
-    // try to read an int
-    const a = parser.consume_int(i64) catch null;
-    if (a == null) {
-        return null;
-    }
-    // needs a , as the delimiter
-    if (parser.peek_char() != ',') {
-        return null;
-    }
-    //consume the ,
-    _ = parser.read_char();
-
-    // try to read an int
-    const b = parser.consume_int(i64) catch null;
-    if (b == null) {
-        return null;
-    }
-    // needs a ) as the delimiter
-    if (parser.peek_char() != ')') {
-        return null;
-    }
-    //consume the )
-    _ = parser.read_char();
-
-    return Mul{ .a = a.?, .b = b.? };
-}
-
 fn parse_line1(allocator: std.mem.Allocator, context: Context1, line: []const u8) !Line {
-    var parser = process.LineParser().init(allocator, context.delimiters, line);
-    defer parser.deinit();
+    const regex = try shared.regex.Regex.init("(mul)\\(([[:digit:]]+),([[:digit:]]+)\\)");
+    defer regex.deinit();
 
-    //read all of the ops
-    while (parser.has_more()) {
-        //read to the next '('
-        const next_string = try parser.read_string();
-        defer parser.allocator.free(next_string);
-
-        const mul = parse_mul(&parser, next_string);
-        if (mul) |value| {
-            try context.ops.append(value);
-        }
+    const matches = try regex.exec(allocator, line);
+    for (matches.matches.items) |match| {
+        const num1 = match.groups.items[1];
+        const num2 = match.groups.items[2];
+        const a = try std.fmt.parseInt(Num, num1, 10);
+        const b = try std.fmt.parseInt(Num, num2, 10);
+        try context.ops.append(Mul{ .a = a, .b = b });
     }
 
     return .{};
 }
 
-fn parse_no_param_func(parser: *process.LineParser(), next_string: []const u8, func_name: []const u8) bool {
-    if (next_string.len >= func_name.len) {
-        const possible_func = next_string[next_string.len - func_name.len ..];
-        if (eql(u8, possible_func, func_name)) {
-            //expect func()
-            const found_delims = parser.found_delimiters.items;
-            if (found_delims.len >= 2 and found_delims[0] == '(' and found_delims[1] == ')') {
-                return true;
-            }
-        }
-    }
-    return false;
-}
+const OpString = enum { mul, do, @"don't" };
 
 fn parse_line2(allocator: std.mem.Allocator, context: Context2, line: []const u8) !Line {
-    var parser = process.LineParser().init(allocator, context.delimiters, line);
-    defer parser.deinit();
+    const regex = try shared.regex.Regex.init("(mul)\\(([[:digit:]]+),([[:digit:]]+)\\)|(do)\\(\\)|(don't)\\(\\)");
+    defer regex.deinit();
 
-    //read all of the ops
-    while (parser.has_more()) {
-        //read to the next '('
-        const next_string = try parser.read_string();
-        defer parser.allocator.free(next_string);
-
-        //Is this a do?
-        if (parse_no_param_func(&parser, next_string, "do")) {
-            try context.ops.append(Op{ .do = Do{} });
-            continue;
-        }
-
-        //Is this a don't?
-        if (parse_no_param_func(&parser, next_string, "don't")) {
-            try context.ops.append(Op{ .dont = Dont{} });
-            continue;
-        }
-
-        //is this a mul
-        const mul = parse_mul(&parser, next_string);
-        if (mul) |value| {
-            try context.ops.append(Op{ .mul = value });
-        }
+    const matches = try regex.exec(allocator, line);
+    for (matches.matches.items) |match| {
+        const op_string = std.meta.stringToEnum(OpString, match.groups.items[0]) orelse continue;
+        const op = switch (op_string) {
+            .mul => mul: {
+                const num1 = match.groups.items[1];
+                const num2 = match.groups.items[2];
+                const a = try std.fmt.parseInt(Num, num1, 10);
+                const b = try std.fmt.parseInt(Num, num2, 10);
+                break :mul Op{ .mul = Mul{ .a = a, .b = b } };
+            },
+            .do => Op{ .do = Do{} },
+            .@"don't" => Op{ .dont = Dont{} },
+        };
+        try context.ops.append(op);
     }
 
     return .{};

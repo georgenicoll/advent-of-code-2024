@@ -3,18 +3,18 @@ const std = @import("std");
 fn addExecutableWithName(
     comptime name: []const u8,
     b: *std.Build,
-    regex_lib: *std.Build.Step.Compile,
+    shared_mod: *std.Build.Module,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 ) void {
-    _ = regex_lib;
     const exe = b.addExecutable(.{
         .name = name,
         .root_source_file = b.path(name ++ "/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addAnonymousImport("shared", .{ .root_source_file = b.path("shared/shared.zig") });
+    exe.linkLibC();
+    exe.root_module.addImport("shared", shared_mod);
     b.installArtifact(exe);
 }
 
@@ -28,30 +28,36 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .target = target,
     });
-    regex_lib.addIncludePath(b.path("include/"));
+    regex_lib.addIncludePath(b.path("shared/include"));
     regex_lib.addCSourceFiles(.{
-        .files = &.{"shared/regex_slim.c"},
+        .files = &.{"shared/src/regex_slim.c"},
         .flags = &.{"-std=c99"},
     });
-    // regex_lib.installHeader(b.path("include/regex_slim.h"), "include/regex_slim.h");
+    regex_lib.installHeader(b.path("shared/include/regex_slim.h"), "regex_slim.h");
     regex_lib.linkLibC();
     b.installArtifact(regex_lib);
 
-    addExecutableWithName("testing", b, regex_lib, target, optimize);
-    addExecutableWithName("testing2", b, regex_lib, target, optimize);
-    addExecutableWithName("template", b, regex_lib, target, optimize);
-    addExecutableWithName("day1", b, regex_lib, target, optimize);
-    addExecutableWithName("day2", b, regex_lib, target, optimize);
-    addExecutableWithName("day3", b, regex_lib, target, optimize);
-    addExecutableWithName("day4", b, regex_lib, target, optimize);
-    addExecutableWithName("day5", b, regex_lib, target, optimize);
-    addExecutableWithName("day6", b, regex_lib, target, optimize);
-    addExecutableWithName("day7", b, regex_lib, target, optimize);
-    addExecutableWithName("day8", b, regex_lib, target, optimize);
-    addExecutableWithName("day9", b, regex_lib, target, optimize);
-    addExecutableWithName("day10", b, regex_lib, target, optimize);
-    addExecutableWithName("day11", b, regex_lib, target, optimize);
-    addExecutableWithName("day12", b, regex_lib, target, optimize);
-    addExecutableWithName("day13", b, regex_lib, target, optimize);
-    addExecutableWithName("day14", b, regex_lib, target, optimize);
+    const shared_mod = b.addModule("shared", .{
+        .root_source_file = b.path("shared/src/shared.zig"),
+    });
+    shared_mod.linkLibrary(regex_lib);
+    shared_mod.addIncludePath(b.path("shared/include"));
+
+    addExecutableWithName("testing", b, shared_mod, target, optimize);
+    addExecutableWithName("testing2", b, shared_mod, target, optimize);
+    addExecutableWithName("template", b, shared_mod, target, optimize);
+    addExecutableWithName("day1", b, shared_mod, target, optimize);
+    addExecutableWithName("day2", b, shared_mod, target, optimize);
+    addExecutableWithName("day3", b, shared_mod, target, optimize);
+    addExecutableWithName("day4", b, shared_mod, target, optimize);
+    addExecutableWithName("day5", b, shared_mod, target, optimize);
+    addExecutableWithName("day6", b, shared_mod, target, optimize);
+    addExecutableWithName("day7", b, shared_mod, target, optimize);
+    addExecutableWithName("day8", b, shared_mod, target, optimize);
+    addExecutableWithName("day9", b, shared_mod, target, optimize);
+    addExecutableWithName("day10", b, shared_mod, target, optimize);
+    addExecutableWithName("day11", b, shared_mod, target, optimize);
+    addExecutableWithName("day12", b, shared_mod, target, optimize);
+    addExecutableWithName("day13", b, shared_mod, target, optimize);
+    addExecutableWithName("day14", b, shared_mod, target, optimize);
 }
