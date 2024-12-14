@@ -55,8 +55,8 @@ fn outputContext(context: *Context) !void {
 
 pub fn main() !void {
     const day = "day14";
-    //const file_name = day ++ "/test_file.txt";
-    //const dimensions = Dimensions{ .x = 11, .y = 7 };
+    // const file_name = day ++ "/test_file.txt";
+    // const dimensions = Dimensions{ .x = 11, .y = 7 };
     //const file_name = day ++ "/test_cases.txt";
     //const dimensions = Dimensions{ .x = ?, .y = ? };
     const file_name = day ++ "/input.txt";
@@ -114,20 +114,21 @@ pub fn main() !void {
 }
 
 fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8) !Line {
-    var parser = shared.process.LineParser().init(allocator, context.delimiters, line);
-    defer parser.deinit();
+    const regex = try shared.regex.Regex.init("p=(-?[[:digit:]]+),(-?[[:digit:]]+) v=(-?[[:digit:]]+),(-?[[:digit:]]+)");
+    defer regex.deinit();
 
-    try parser.consume_delimiters();
-    const pos_x = try parser.read_int(Num, 10);
-    const pos_y = try parser.read_int(Num, 10);
-    const vel_x = try parser.read_int(Num, 10);
-    const vel_y = try parser.read_int(Num, 10);
-
-    const robot = Robot{
-        .position = Position{ .x = pos_x, .y = pos_y },
-        .velocity = Velocity{ .x = vel_x, .y = vel_y },
-    };
-    try context.robots.append(robot);
+    const matches = try regex.exec(allocator, line);
+    for (matches.matches.items) |match| {
+        const pos_x = try std.fmt.parseInt(isize, match.groups.items[0], 10);
+        const pos_y = try std.fmt.parseInt(isize, match.groups.items[1], 10);
+        const vel_x = try std.fmt.parseInt(isize, match.groups.items[2], 10);
+        const vel_y = try std.fmt.parseInt(isize, match.groups.items[3], 10);
+        const robot = Robot{
+            .position = Position{ .x = pos_x, .y = pos_y },
+            .velocity = Velocity{ .x = vel_x, .y = vel_y },
+        };
+        try context.robots.append(robot);
+    }
 
     return .{};
 }
@@ -214,12 +215,6 @@ fn populateGrid(grid: *shared.aoc.Grid(u8), robots: *std.ArrayList(Robot), c: u8
     for (robots.items) |robot| {
         try grid.setItemAt(robot.position.x, robot.position.y, c);
     }
-}
-
-fn isInteresting(robot: *Robot) bool {
-    //return robot.position.y == 0 and robot.position.x == 50;
-    _ = robot;
-    return true;
 }
 
 fn calculate_2(allocator: std.mem.Allocator, context: *Context) !void {

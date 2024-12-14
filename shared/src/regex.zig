@@ -41,7 +41,14 @@ pub const Match = struct {
 
     fn deinit(self: Self) void {
         self.allocator.free(self.full_match);
+        for (self.groups.items) |group| {
+            self.allocator.free(group);
+        }
         self.groups.deinit();
+    }
+
+    fn addGroup(self: *Self, group: []const u8) !void {
+        try self.groups.append(try self.allocator.dupe(u8, group));
     }
 };
 
@@ -167,7 +174,7 @@ pub const Regex = struct {
                 }
                 const end_sub = @as(usize, @intCast(pmatch[1 + sub].rm_eo));
                 const sub_slice = string[@as(usize, @intCast(start_sub))..end_sub];
-                try match.groups.append(sub_slice);
+                try match.addGroup(sub_slice);
             }
             if (!(try matchFoundFn(context, match))) {
                 match.deinit();
