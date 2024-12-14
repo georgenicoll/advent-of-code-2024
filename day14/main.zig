@@ -36,7 +36,6 @@ const Robot = struct {
 };
 
 const Context = struct {
-    delimiters: std.AutoHashMap(u8, bool),
     robots: std.ArrayList(Robot),
     dimensions: Dimensions,
 };
@@ -68,19 +67,10 @@ pub fn main() !void {
     var arena_allocator = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena_allocator.deinit();
 
-    var delimiters = std.AutoHashMap(u8, bool).init(arena_allocator.allocator());
-    try delimiters.put('p', true);
-    try delimiters.put('=', true);
-    try delimiters.put(',', true);
-    try delimiters.put(' ', true);
-    try delimiters.put('v', true);
-    try delimiters.put('=', true);
-
     var robots1 = try std.ArrayList(Robot).initCapacity(arena_allocator.allocator(), 500);
     defer robots1.deinit();
 
     var context1 = Context{
-        .delimiters = delimiters,
         .robots = robots1,
         .dimensions = dimensions,
     };
@@ -98,7 +88,6 @@ pub fn main() !void {
     defer robots2.deinit();
 
     var context2 = Context{
-        .delimiters = delimiters,
         .robots = robots2,
         .dimensions = dimensions,
     };
