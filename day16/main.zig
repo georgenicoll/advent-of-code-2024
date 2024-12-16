@@ -177,8 +177,9 @@ const directions: [4]Direction = [4]Direction{
     Direction.west,
 };
 
-// Dijkstra - return the visited end node
-// visited_by_node_and_direction will own the VisitedNodes that this creates
+/// Dijkstra - return the visited end node
+///
+/// visited_by_node_and_direction will own the VisitedNodes that this creates
 fn findCheapestRoute(
     allocator: std.mem.Allocator,
     context: *Context,
