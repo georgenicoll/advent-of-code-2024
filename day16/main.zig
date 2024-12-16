@@ -44,10 +44,10 @@ const Direction = enum {
 };
 
 const Context = struct {
+    rows_processed: usize = 0,
     nodes: *std.ArrayList(Node),
     start: ?Node = null,
     end: ?Node = null,
-    grid: *shared.aoc.Grid(u8),
 };
 
 const Line = struct {};
@@ -67,12 +67,8 @@ pub fn main() !void {
     var nodes = std.ArrayList(Node).init(arena_allocator.allocator());
     defer nodes.deinit();
 
-    var grid = shared.aoc.Grid(u8).init(arena_allocator.allocator());
-    defer grid.deinit();
-
     var context = Context{
         .nodes = &nodes,
-        .grid = &grid,
     };
 
     const parsed_lines = try process.FileParser(*Context, Line, parse_line).parse(
@@ -91,14 +87,14 @@ fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8)
     for (line, 0..) |square, i| {
         const node: ?Node = switch (square) {
             Wall => null,
-            Space => Node{ .i = i, .j = context.grid.height },
+            Space => Node{ .i = i, .j = context.rows_processed },
             Start => start: {
-                const n = Node{ .i = i, .j = context.grid.height };
+                const n = Node{ .i = i, .j = context.rows_processed };
                 context.start = n;
                 break :start n;
             },
             End => end: {
-                const n = Node{ .i = i, .j = context.grid.height };
+                const n = Node{ .i = i, .j = context.rows_processed };
                 context.end = n;
                 break :end n;
             },
@@ -108,8 +104,7 @@ fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8)
             try context.nodes.append(n);
         }
     }
-    //and add to the grid
-    try context.grid.addRow(line);
+    context.rows_processed += 1;
 
     return .{};
 }
