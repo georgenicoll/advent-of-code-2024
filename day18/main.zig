@@ -317,6 +317,8 @@ fn calculate(allocator: std.mem.Allocator, context: *Context) !void {
     try std.io.getStdOut().writer().print("Part 1 Steps {d}\n", .{details.cost});
 }
 
+/// This feels a bit brute force and has to be build with --release=fast to finish in an acceptable time.
+/// Should investigate ways of detecting a graph becoming split as we add nodes.
 fn calculate_2(allocator: std.mem.Allocator, context: *Context) !void {
     //build and populate grid...
     const width = @as(usize, @intCast(context.dimensions.i));
