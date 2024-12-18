@@ -332,8 +332,6 @@ fn calculate_2(allocator: std.mem.Allocator, context: *Context) !void {
     for (0..height) |_| {
         try grid.addRow(empty_line.items);
     }
-    try grid.print(std.io.getStdOut().writer(), "{c}");
-    try std.io.getStdOut().writeAll("\n");
 
     var visit_details_by_pos = std.AutoHashMap(Pos, *VisitDetails).init(allocator);
     defer {
@@ -345,6 +343,8 @@ fn calculate_2(allocator: std.mem.Allocator, context: *Context) !void {
     for (context.byte_positions.items[0..context.steps]) |pos| {
         try grid.setItemAt(pos.i, pos.j, Byte);
     }
+    try grid.print(std.io.getStdOut().writer(), "{c}");
+    try std.io.getStdOut().writeAll("\n");
 
     var blocking_pos: ?Pos = null;
     //now try adding each next one and see whether we can
@@ -375,6 +375,8 @@ fn calculate_2(allocator: std.mem.Allocator, context: *Context) !void {
             break;
         }
     }
+    try grid.print(std.io.getStdOut().writer(), "{c}");
+    try std.io.getStdOut().writeAll("\n");
 
     try std.io.getStdOut().writeAll("Part 2 Blocking Pos: ");
     try blocking_pos.?.print(std.io.getStdOut().writer());
