@@ -100,10 +100,6 @@ fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8)
     return .{};
 }
 
-const NextTry = struct {
-    colours_consumed_so_far: usize,
-};
-
 fn countPossible(
     towels: *std.StringHashMap(void),
     max_towel_length: usize,

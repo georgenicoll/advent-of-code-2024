@@ -44,8 +44,8 @@ pub fn main() !void {
     // }
     // try stdout.writer().print("width: {d}, height: {d}\n", .{ context.width, context.height });
 
-    try calculate(arena_allocator.allocator(), context);
-    try calculate_2(arena_allocator.allocator(), context);
+    try calculate(arena_allocator.allocator(), &context);
+    try calculate_2(arena_allocator.allocator(), &context);
 }
 
 fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8) !Line {
@@ -55,7 +55,7 @@ fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8)
     return .{};
 }
 
-fn calculate(allocator: std.mem.Allocator, context: Context) !void {
+fn calculate(allocator: std.mem.Allocator, context: *const Context) !void {
     _ = allocator;
     _ = context;
 
@@ -65,7 +65,7 @@ fn calculate(allocator: std.mem.Allocator, context: Context) !void {
     try std.io.getStdOut().writer().print("Part 1 Sum {d}\n", .{sum});
 }
 
-fn calculate_2(allocator: std.mem.Allocator, context: Context) !void {
+fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
     _ = allocator;
     _ = context;
 
