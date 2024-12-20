@@ -77,8 +77,17 @@ pub fn main() !void {
     );
     defer parsed_lines.deinit();
 
-    try calculate(arena_allocator.allocator(), &context);
-    try calculate_2(arena_allocator.allocator(), &context);
+    var steps = try std.ArrayList(*Step).initCapacity(arena_allocator.allocator(), 1000);
+    defer {
+        for (steps.items) |step| {
+            arena_allocator.allocator().destroy(step);
+        }
+        steps.deinit();
+    }
+
+    try findPath(arena_allocator.allocator(), &context, &steps);
+    try calculate(arena_allocator.allocator(), &steps);
+    try calculate_2(arena_allocator.allocator(), &steps);
 }
 
 fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8) !Line {
@@ -124,160 +133,16 @@ const Pos = struct {
         };
     }
 
+    fn distanceTo(self: Self, other: *Self) usize {
+        const distance_i = @abs(other.i - self.i);
+        const distance_j = @abs(other.j - self.j);
+        return @as(usize, @intCast(distance_i + distance_j));
+    }
+
     fn eql(self: Self, other: *const Self) bool {
         return self.i == other.i and self.j == other.j;
     }
 };
-
-const VisitedPos = struct {
-    pos: Pos,
-    cost: usize,
-};
-
-const VisitDetails = struct {
-    const Self = @This();
-
-    pos: Pos,
-    cost: usize,
-    from: *std.ArrayList(*VisitDetails),
-    visited: bool,
-
-    fn init(allocator: std.mem.Allocator, pos: Pos, cost: usize) !Self {
-        const from: *std.ArrayList(*VisitDetails) = try allocator.create(std.ArrayList(*VisitDetails));
-        from.* = try std.ArrayList(*VisitDetails).initCapacity(allocator, 4);
-        return Self{
-            .cost = cost,
-            .pos = pos,
-            .from = from,
-            .visited = false,
-        };
-    }
-
-    fn deinit(self: Self, allocator: std.mem.Allocator) void {
-        self.from.deinit();
-        allocator.destroy(self.from);
-    }
-
-    fn print(self: Self, writer: anytype) !void {
-        try self.pos.print(writer);
-        try writer.print(" Cost: {d}", .{self.cost});
-    }
-};
-
-fn closestNodeFn(ignored: void, a: VisitedPos, b: VisitedPos) std.math.Order {
-    _ = ignored;
-    const cost_ordering = std.math.order(a.cost, b.cost);
-    if (cost_ordering != std.math.Order.eq) {
-        return cost_ordering;
-    }
-    //break a tie with j then i then distance
-    const j_ordering = std.math.order(a.pos.j, b.pos.j);
-    if (j_ordering != std.math.Order.eq) {
-        return j_ordering;
-    }
-    return std.math.order(a.pos.i, b.pos.i);
-}
-
-const UnvisitedQueue = std.PriorityQueue(VisitedPos, void, closestNodeFn);
-
-fn populateVisitingStructs(
-    allocator: std.mem.Allocator,
-    context: *Context,
-    grid: *shared.aoc.Grid(u8),
-    visit_details_by_pos: *std.AutoHashMap(Pos, *VisitDetails),
-    unvisited: *UnvisitedQueue,
-) !void {
-    visit_details_by_pos.clearRetainingCapacity();
-    //populate the map and the priority queue - we can use the grid to populate all of the positions that are valid
-    for (0..grid.height) |j_u| {
-        const j = @as(isize, @intCast(j_u));
-        for (0..grid.width) |i_u| {
-            const i = @as(isize, @intCast(i_u));
-            const item = grid.itemAt(i, j).?;
-            if (item != Wall) {
-                const pos = Pos{ .i = i, .j = j };
-                const cost: usize = if (pos.eql(&context.start)) 0 else std.math.maxInt(usize);
-
-                const vp = VisitedPos{ .pos = pos, .cost = cost };
-                try unvisited.add(vp);
-
-                const vd: *VisitDetails = try allocator.create(VisitDetails);
-                vd.* = try VisitDetails.init(allocator, pos, cost);
-                try visit_details_by_pos.put(pos, vd);
-            }
-        }
-    }
-}
-
-/// Dijkstra - return the visited end node
-///
-/// visited_details_by_pos will own the VisitDetails that this creates and should free them
-fn findCheapestRoute(
-    context: *Context,
-    visit_details_by_pos: *std.AutoHashMap(Pos, *VisitDetails),
-    unvisited: *UnvisitedQueue,
-) !*VisitDetails {
-    //dijkstra
-    while (unvisited.count() > 0) {
-        //get the next one
-        var visiting = unvisited.remove();
-        //cost is max, didn't find the end
-        if (visiting.cost == std.math.maxInt(usize)) {
-            break;
-        }
-        //if end one, we got there, done
-        const visiting_details = visit_details_by_pos.get(visiting.pos).?;
-        if (visiting_details.pos.eql(&context.end)) {
-            visiting_details.visited = true;
-            break;
-        }
-        //Go to the next ones not visited
-        for (directions) |direction| {
-            const candidate_pos = visiting.pos.move(direction);
-            const maybe_candidate_details = visit_details_by_pos.get(candidate_pos);
-            if (maybe_candidate_details) |candidate_details| {
-                if (candidate_details.visited) {
-                    continue; //already got the shortest path to here from this direction
-                }
-                //calculate what the cost would be
-                const move_cost: usize = 1; //only ever 1 in this case
-                const cost_this_path = visiting.cost + move_cost;
-                if (cost_this_path < candidate_details.cost) {
-                    //update the VisitedPos in the priority queue
-                    const previous = VisitedPos{
-                        .pos = candidate_pos,
-                        .cost = candidate_details.cost,
-                    };
-                    const updated = VisitedPos{
-                        .pos = candidate_pos,
-                        .cost = cost_this_path,
-                    };
-                    try unvisited.update(previous, updated);
-                    //and update the details - we have a new shortest - replace the from_nodes - update in the unvisited_nodes
-                    candidate_details.cost = cost_this_path;
-                    candidate_details.from.clearRetainingCapacity();
-                    try candidate_details.from.append(visiting_details);
-                } else if (cost_this_path == candidate_details.cost) {
-                    //Not a new path but add this to a possible from_path
-                    try candidate_details.from.append(visiting_details);
-                }
-            }
-        }
-        visiting_details.visited = true;
-    }
-
-    return visit_details_by_pos.get(context.end).?;
-}
-
-fn freeUpVisitDetails(allocator: std.mem.Allocator, visit_details_by_pos: *std.AutoHashMap(Pos, *VisitDetails)) void {
-    var it = visit_details_by_pos.valueIterator();
-    while (it.next()) |details| {
-        details.*.deinit(allocator);
-        allocator.destroy(details.*);
-    }
-}
-
-// Maybe remove above
 
 const Step = struct {
     pos: Pos,
@@ -298,7 +163,6 @@ fn findPath(
     allocator: std.mem.Allocator,
     context: *const Context,
     steps: *std.ArrayList(*Step),
-    steps_by_pos: *std.AutoHashMap(Pos, *Step),
 ) !void {
     steps.clearRetainingCapacity();
 
@@ -308,7 +172,6 @@ fn findPath(
     //First step starts at the start
     var current_step = try Step.init(allocator, context.start.?, 0);
     try steps.append(current_step);
-    try steps_by_pos.put(current_step.pos, current_step);
 
     //walk through from the start to the end... there is only one path - start at start and stop at end
     while (true) {
@@ -327,7 +190,6 @@ fn findPath(
                 if (maybe_new_step) |new_step| {
                     try visited.put(new_step.pos, void{});
                     try steps.append(new_step);
-                    try steps_by_pos.put(new_step.pos, new_step);
                     current_step = new_step;
                 }
                 if (current_step.pos.eql(&context.end.?)) {
@@ -345,52 +207,38 @@ const Cheat = struct {
 };
 
 fn findCheats(
-    steps: *std.ArrayList(*Step),
-    steps_by_pos: *std.AutoHashMap(Pos, *Step),
+    steps: *const std.ArrayList(*Step),
     cheats: *std.ArrayList(Cheat),
+    max_distance: usize,
 ) !void {
-    //work through all of the steps trying to find cheats (jumps of 2 in any direction through a wall that find the path again)
-    for (steps.items) |step| {
-        for (directions) |direction| {
-            const cheat_end = step.pos.move(direction).move(direction); //2 jumps
-            //does this save?
-            const maybe_on_path = steps_by_pos.get(cheat_end);
-            if (maybe_on_path) |on_path| {
-                //only worth it if steps would actually be saved
-                if (on_path.step_number > step.step_number + 2) {
-                    const steps_saved = on_path.step_number - step.step_number - 2;
-                    const cheat = Cheat{
-                        .start_pos = step.pos,
-                        .end_pos = on_path.pos,
-                        .saves_steps = steps_saved,
-                    };
-                    try cheats.append(cheat);
-                }
+    //work through all of the steps trying to find cheats (jumps of up to max_distance away)
+    for (0..steps.items.len) |start| {
+        for (start + 1..steps.items.len) |end| {
+            const start_step = steps.items[start];
+            const end_step = steps.items[end];
+            //is this close enough and does it save any time
+            const distance = start_step.pos.distanceTo(&end_step.pos);
+            if (distance > max_distance) {
+                continue; //too far
+            }
+            if (end_step.step_number > start_step.step_number + distance) {
+                const steps_saved = end_step.step_number - start_step.step_number - distance;
+                const cheat = Cheat{
+                    .start_pos = start_step.pos,
+                    .end_pos = end_step.pos,
+                    .saves_steps = steps_saved,
+                };
+                try cheats.append(cheat);
             }
         }
     }
 }
 
-fn calculate(allocator: std.mem.Allocator, context: *const Context) !void {
-    try context.print(std.io.getStdOut().writer());
-
-    //first calculate the shortest path through the maze
-    var steps = try std.ArrayList(*Step).initCapacity(allocator, 1000);
-    defer {
-        for (steps.items) |step| {
-            allocator.destroy(step);
-        }
-        steps.deinit();
-    }
-    var steps_by_pos = std.AutoHashMap(Pos, *Step).init(allocator);
-    defer steps_by_pos.deinit();
-
-    try findPath(allocator, context, &steps, &steps_by_pos);
-
+fn calculate(allocator: std.mem.Allocator, steps: *const std.ArrayList(*Step)) !void {
     var cheats = try std.ArrayList(Cheat).initCapacity(allocator, steps.items.len);
     defer cheats.deinit();
 
-    try findCheats(&steps, &steps_by_pos, &cheats);
+    try findCheats(steps, &cheats, 2);
 
     var sum: usize = 0;
     for (cheats.items) |cheat| {
@@ -401,12 +249,17 @@ fn calculate(allocator: std.mem.Allocator, context: *const Context) !void {
     try std.io.getStdOut().writer().print("Part 1 Cheats Saving enough time {d}\n", .{sum});
 }
 
-fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
-    _ = allocator;
-    _ = context;
+fn calculate_2(allocator: std.mem.Allocator, steps: *const std.ArrayList(*Step)) !void {
+    var cheats = try std.ArrayList(Cheat).initCapacity(allocator, steps.items.len);
+    defer cheats.deinit();
+
+    try findCheats(steps, &cheats, 20);
 
     var sum: usize = 0;
-    sum += 0;
-
-    try std.io.getStdOut().writer().print("Part 2 Sum {d}\n", .{sum});
+    for (cheats.items) |cheat| {
+        if (cheat.saves_steps > 99) { //at least 100 for the main input
+            sum += 1;
+        }
+    }
+    try std.io.getStdOut().writer().print("Part 2 Cheats Saving enough time {d}\n", .{sum});
 }
