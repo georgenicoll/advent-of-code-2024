@@ -445,7 +445,6 @@ fn calculatePresses(
     for (code) |button| {
         //if it's the same button nothing to do but press it
         if (button == current_button) {
-            // try std.io.getStdOut().writer().writeAll("A");
             presses += 1;
             continue;
         }
@@ -496,7 +495,6 @@ fn calculate(
     robot_button_combs: *std.AutoHashMap(ButtonComb, []const u8),
     num_robots: usize,
 ) !u128 {
-    // _ = robot_button_combs;
     var string = try std.ArrayList(u8).initCapacity(allocator, 5);
     defer string.deinit();
 

@@ -2,3 +2,4 @@
 zig-out/
 out.txt
 input.txt
+!template/input.txt
