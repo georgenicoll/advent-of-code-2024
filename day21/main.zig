@@ -19,10 +19,6 @@ const ButtonComb = struct {
     end_button: u8,
 };
 
-const Combinations = struct {
-    combinations: *std.ArrayList([]const u8),
-};
-
 pub fn main() !void {
     const day = "day21";
     //const file_name = day ++ "/test_file.txt";
@@ -45,7 +41,7 @@ pub fn main() !void {
     try keypad.addRow("123");
     try keypad.addRow(".0A");
 
-    var keypad_button_combs = std.AutoHashMap(ButtonComb, Combinations).init(arena_allocator.allocator());
+    var keypad_button_combs = std.AutoHashMap(ButtonComb, []const u8).init(arena_allocator.allocator());
     defer keypad_button_combs.deinit();
     try calculateCombinations(arena_allocator.allocator(), buttons_keypad, &keypad, &keypad_button_combs);
 
@@ -54,7 +50,7 @@ pub fn main() !void {
     try robot_keypad.addRow(".^A");
     try robot_keypad.addRow("<v>");
 
-    var robot_button_combs = std.AutoHashMap(ButtonComb, Combinations).init(arena_allocator.allocator());
+    var robot_button_combs = std.AutoHashMap(ButtonComb, []const u8).init(arena_allocator.allocator());
     defer robot_button_combs.deinit();
     try calculateCombinations(arena_allocator.allocator(), buttons_robot_keypad, &robot_keypad, &robot_button_combs);
 
@@ -69,15 +65,11 @@ pub fn main() !void {
     );
     defer parsed_lines.deinit();
 
-    // const stdout = std.io.getStdOut();
-    // for (context.grid.items) |row| {
-    //     try stdout.writeAll(row.items);
-    //     try stdout.writeAll("\n");
-    // }
-    // try stdout.writer().print("width: {d}, height: {d}\n", .{ context.width, context.height });
+    const part1 = try calculate(arena_allocator.allocator(), &context, &keypad_button_combs, &robot_button_combs, 2);
+    try std.io.getStdOut().writer().print("Part 1 {d}\n", .{part1});
 
-    try calculate(arena_allocator.allocator(), &context, &keypad_button_combs, &robot_button_combs);
-    try calculate_2(arena_allocator.allocator(), &context, &keypad_button_combs, &robot_button_combs);
+    const part2 = try calculate(arena_allocator.allocator(), &context, &keypad_button_combs, &robot_button_combs, 25);
+    try std.io.getStdOut().writer().print("Part 2 {d}\n", .{part2});
 }
 
 fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8) !Line {
@@ -87,7 +79,7 @@ fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8)
     return .{};
 }
 
-//TODO: Generify - copied and adapted from Day 16/18 thee now
+//TODO: Generify - copied and adapted from Day 16/18 three now
 const Pos = struct {
     const Self = @This();
 
@@ -361,7 +353,12 @@ fn leftBeforeUpBeforeDownBeforeRight(ignored: void, lhs: []const u8, rhs: []cons
     return false;
 }
 
-fn calculateCombinations(allocator: std.mem.Allocator, buttons: []const u8, keypad: *shared.aoc.Grid(u8), combs: *std.AutoHashMap(ButtonComb, Combinations)) !void {
+fn calculateCombinations(
+    allocator: std.mem.Allocator,
+    buttons: []const u8,
+    keypad: *shared.aoc.Grid(u8),
+    combs: *std.AutoHashMap(ButtonComb, []const u8),
+) !void {
     var visit_details_by_pos_and_direction = std.AutoHashMap(PosAndDirection, *VisitDetails).init(allocator);
     defer visit_details_by_pos_and_direction.deinit();
 
@@ -423,10 +420,7 @@ fn calculateCombinations(allocator: std.mem.Allocator, buttons: []const u8, keyp
             }
             //Order the combinations by the left before up before down before right
             std.mem.sort([]const u8, combinations.items, {}, leftBeforeUpBeforeDownBeforeRight);
-            const combinations_struct = Combinations{
-                .combinations = combinations,
-            };
-            try combs.put(button_comb, combinations_struct);
+            try combs.put(button_comb, combinations.swapRemove(0));
         }
     }
 }
@@ -439,12 +433,12 @@ const CombAndLevel = struct {
 const back_to_a = &[_]u8{'A'};
 
 fn calculatePresses(
-    cached_presses: *std.AutoHashMap(CombAndLevel, usize),
+    cached_presses: *std.AutoHashMap(CombAndLevel, u128),
     code: []const u8,
-    button_combs: []*const std.AutoHashMap(ButtonComb, Combinations),
+    button_combs: []*const std.AutoHashMap(ButtonComb, []const u8),
     start_button: u8,
-) !usize {
-    var presses: usize = 0;
+) !u128 {
+    var presses: u128 = 0;
     //work through all the required presses for the code - this applies to the first button combs
     const this_keypad = button_combs[0];
     var current_button = start_button;
@@ -475,18 +469,15 @@ fn calculatePresses(
 
         const combinations = this_keypad.get(button_comb).?;
 
-        var this_presses: usize = 0;
+        var this_presses: u128 = 0;
 
-        const path = combinations.combinations.items[0];
         if (button_combs.len == 1) {
-            this_presses += path.len; //navigate to it
-            // try std.io.getStdOut().writer().writeAll(path);
+            this_presses += combinations.len; //navigate to it
             this_presses += 1; //press 'A'
-            // try std.io.getStdOut().writer().writeAll("A");
         } else {
             //work out the presses for the robot - note in order to press we need to go to the button and then back to 'A' each time
-            this_presses += try calculatePresses(cached_presses, path, button_combs[1..], 'A');
-            this_presses += try calculatePresses(cached_presses, back_to_a, button_combs[1..], path[path.len - 1]);
+            this_presses += try calculatePresses(cached_presses, combinations, button_combs[1..], 'A');
+            this_presses += try calculatePresses(cached_presses, back_to_a, button_combs[1..], combinations[combinations.len - 1]);
         }
 
         //cache the result
@@ -501,87 +492,34 @@ fn calculatePresses(
 fn calculate(
     allocator: std.mem.Allocator,
     context: *const Context,
-    keypad_button_combs: *std.AutoHashMap(ButtonComb, Combinations),
-    robot_button_combs: *std.AutoHashMap(ButtonComb, Combinations),
-) !void {
+    keypad_button_combs: *std.AutoHashMap(ButtonComb, []const u8),
+    robot_button_combs: *std.AutoHashMap(ButtonComb, []const u8),
+    num_robots: usize,
+) !u128 {
     // _ = robot_button_combs;
     var string = try std.ArrayList(u8).initCapacity(allocator, 5);
     defer string.deinit();
 
-    var cached_presses = std.AutoHashMap(CombAndLevel, usize).init(allocator);
+    var cached_presses = std.AutoHashMap(CombAndLevel, u128).init(allocator);
     defer cached_presses.deinit();
 
-    var sum: usize = 0;
+    var button_combs = try std.ArrayList(*std.AutoHashMap(ButtonComb, []const u8)).initCapacity(
+        allocator,
+        num_robots + 1,
+    );
+    defer button_combs.deinit();
+    try button_combs.append(keypad_button_combs);
+    try button_combs.appendNTimes(robot_button_combs, num_robots);
+
+    var sum: u128 = 0;
     for (context.codes.items) |code| {
-        var button_combs = [_]*std.AutoHashMap(ButtonComb, Combinations){
-            keypad_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-        };
-        const presses = try calculatePresses(&cached_presses, code, &button_combs, 'A');
-        // try std.io.getStdOut().writer().writeAll("\n");
+        const presses = try calculatePresses(&cached_presses, code, button_combs.items, 'A');
+
         //get the number, remove the trailing 'A'
         string.clearRetainingCapacity();
         try string.writer().writeAll(code[0 .. code.len - 1]);
-        const numeric_code = try std.fmt.parseInt(usize, string.items, 10);
+        const numeric_code = try std.fmt.parseInt(u128, string.items, 10);
         sum += presses * numeric_code;
     }
-
-    try std.io.getStdOut().writer().print("Part 1 Sum {d}\n", .{sum});
-}
-
-fn calculate_2(
-    allocator: std.mem.Allocator,
-    context: *const Context,
-    keypad_button_combs: *std.AutoHashMap(ButtonComb, Combinations),
-    robot_button_combs: *std.AutoHashMap(ButtonComb, Combinations),
-) !void {
-    // _ = robot_button_combs;
-    var string = try std.ArrayList(u8).initCapacity(allocator, 5);
-    defer string.deinit();
-
-    var cached_presses = std.AutoHashMap(CombAndLevel, usize).init(allocator);
-    defer cached_presses.deinit();
-
-    var sum: usize = 0;
-    for (context.codes.items) |code| {
-        var button_combs = [_]*std.AutoHashMap(ButtonComb, Combinations){
-            keypad_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-            robot_button_combs,
-        };
-        // try std.io.getStdOut().writer().writeAll(code);
-        const presses = try calculatePresses(&cached_presses, code, &button_combs, 'A');
-        try std.io.getStdOut().writer().print("{d}\n", .{presses});
-        //get the number, remove the trailing 'A'
-        string.clearRetainingCapacity();
-        try string.writer().writeAll(code[0 .. code.len - 1]);
-        const numeric_code = try std.fmt.parseInt(usize, string.items, 10);
-        sum += presses * numeric_code;
-    }
-
-    try std.io.getStdOut().writer().print("Part 2 Sum {d}\n", .{sum});
+    return sum;
 }
