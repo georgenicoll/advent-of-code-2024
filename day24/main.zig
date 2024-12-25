@@ -8,6 +8,7 @@ const eql = std.mem.eql;
 const Input = struct {
     wire_id: []const u8,
     value: u8,
+    bit: usize,
 };
 
 const Wire = struct {
@@ -259,8 +260,10 @@ fn populateWithBit(input_name: *std.ArrayList(u8), prefix: u8, bit: usize) !void
     try input_name.writer().print("{c}{d:0>2}", .{ prefix, bit });
 }
 
-fn setUpInputs(inputs: *std.ArrayList(Input), first_one: ?[]const u8, second_one: ?[]const u8) void {
+fn setUpInputs(inputs: *std.ArrayList(Input), to_bit: usize) void {
     for (inputs.items) |*input| {
+        if ()
+
         if ((first_one != null and eql(u8, first_one.?, input.wire_id)) or
             (second_one != null and eql(u8, second_one.?, input.wire_id)))
         {
@@ -316,7 +319,7 @@ fn testBit(
     //x bit 1 and y bit 1 should be next z bit 1
     setUpInputs(inputs, x_bit.id, y_bit.id);
     try run(context, inputs, current_changes, next_changes);
-    if (z_next_bit.value != 1) {
+    if (z_this_bit.value != 0 or z_next_bit.value != 1) {
         // try std.io.getStdOut().writer().print("Failed at 1,1 bit {d}\n", .{bit});
         return false;
     }
@@ -330,9 +333,9 @@ fn testAllBits(
     current_changes: *std.ArrayList(ValueChange),
     next_changes: *std.ArrayList(ValueChange),
     input_name: *std.ArrayList(u8),
-    max_bits: usize,
+    num_bits: usize,
 ) !bool {
-    for (0..max_bits) |bit| {
+    for (0..num_bits) |bit| {
         if (!try testBit(
             context,
             &inputs,
@@ -357,6 +360,14 @@ fn stringLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
     return std.mem.order(u8, lhs, rhs) == .lt;
 }
 
+fn setUpSwap(swaps: *std.AutoHashMap(usize, void), context: *const Context, index1: usize, index2: usize) !void {
+    try swaps.put(index1, {});
+    try swaps.put(index2, {});
+    const gate1 = context.gates.items[index1];
+    const gate2 = context.gates.items[index2];
+    swapOutputs(gate1, gate2);
+}
+
 fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
     var next_changes = try std.ArrayList(ValueChange).initCapacity(allocator, 100);
     defer next_changes.deinit();
@@ -364,23 +375,24 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
     defer current_changes.deinit();
 
     //work out how many bits in the input
-    var max_bits: u8 = 0;
+    var max_bit: u8 = 0;
     var it = context.wires_by_id.keyIterator();
     while (it.next()) |id| {
         if (id.*[0] == 'x') {
             const bit_num = try std.fmt.parseInt(u8, id.*[1..], 10);
-            max_bits = @max(max_bits, bit_num);
+            max_bit = @max(max_bit, bit_num);
         }
     }
-    try std.io.getStdOut().writer().print("Found {d} input bits\n", .{max_bits});
+    const num_bits = max_bit + 1;
+    try std.io.getStdOut().writer().print("Found {d} bits\n", .{num_bits});
 
     //used repeatedly to construct input names
     var input_name = try std.ArrayList(u8).initCapacity(allocator, 3);
     defer input_name.deinit();
 
     //Set up the inputs... initially all at 0
-    var inputs = try std.ArrayList(Input).initCapacity(allocator, max_bits * 2);
-    for (0..max_bits) |bit| {
+    var inputs = try std.ArrayList(Input).initCapacity(allocator, num_bits * 2);
+    for (0..num_bits) |bit| {
         try populateWithBit(&input_name, 'x', bit);
         try inputs.append(Input{ .wire_id = try allocator.dupe(u8, input_name.items), .value = 0 });
         try populateWithBit(&input_name, 'y', bit);
@@ -390,60 +402,76 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
     var swaps = std.AutoHashMap(usize, void).init(allocator);
     defer swaps.deinit();
 
-    var failures: usize = 0;
-    //now find where there are failures and see if we can fix
-    for (0..max_bits) |bit| {
-        if (!try testBit(context, &inputs, &current_changes, &next_changes, &input_name, bit)) {
-            try std.io.getStdOut().writer().print("Failed at bit {d}\n", .{bit});
-            failures += 1;
-        }
-    }
-    try std.io.getStdOut().writer().print("Found {d} Failures\n", .{failures});
+    // try setUpSwap(&swaps, context, 81, 136);
+    // try setUpSwap(&swaps, context, 157, 173);
+    // try setUpSwap(&swaps, context, 87, 109);
+    // try setUpSwap(&swaps, context, 30, 94);
 
-    outer: while (failures > 0) {
-        //Attempt to find fixes that reduce the number of failures...
-        for (0..context.gates.items.len) |gate1_index| {
-            if (swaps.contains(gate1_index)) {
-                continue;
-            }
-            for (0..context.gates.items.len) |gate2_index| {
-                if (gate1_index == gate2_index) {
-                    continue;
-                }
-                if (swaps.contains(gate2_index)) {
-                    continue;
-                }
-                //swap over the outputs...
-                const gate1 = context.gates.items[gate1_index];
-                const gate2 = context.gates.items[gate2_index];
-                swapOutputs(gate1, gate2);
-                var this_failures: usize = 0;
-                for (0..max_bits) |bit| {
-                    if (!try testBit(context, &inputs, &current_changes, &next_changes, &input_name, bit)) {
-                        this_failures += 1;
+    //now find where there are failures and see if we can fix
+    var has_error = true;
+    outer: while (has_error) {
+        has_error = false;
+        for (0..num_bits) |bit| {
+            if (!try testBit(context, &inputs, &current_changes, &next_changes, &input_name, bit)) {
+                has_error = true;
+                try std.io.getStdOut().writer().print("Failed at bit {d}\n", .{bit});
+                //try to fix...
+                for (0..context.gates.items.len) |gate1_index| {
+                    if (swaps.contains(gate1_index)) {
+                        continue;
+                    }
+                    for (0..context.gates.items.len) |gate2_index| {
+                        // if (gate1_index == 30 and gate2_index == 94) {
+                        //     continue;
+                        // }
+                        // if (gate1_index == 94 and gate2_index == 30) {
+                        //     continue;
+                        // }
+                        if (gate1_index == gate2_index) {
+                            continue;
+                        }
+                        if (swaps.contains(gate2_index)) {
+                            continue;
+                        }
+                        //swap over the outputs...
+                        const gate1 = context.gates.items[gate1_index];
+                        const gate2 = context.gates.items[gate2_index];
+                        swapOutputs(gate1, gate2);
+                        var good_to_bit = true;
+                        for (0..bit + 2) |the_bit| {
+                            if (!try testBit(
+                                context,
+                                &inputs,
+                                &current_changes,
+                                &next_changes,
+                                &input_name,
+                                the_bit,
+                            )) {
+                                good_to_bit = false;
+                            }
+                        }
+                        //was this good - did it reduce the failures?
+                        if (good_to_bit) {
+                            //keep it - record that we already swapped these mofos
+                            try swaps.put(gate1_index, {});
+                            try swaps.put(gate2_index, {});
+                            try std.io.getStdOut().writer().print("Swapping {d} and {d} seems to be good to {d}\n", .{
+                                gate1_index,
+                                gate2_index,
+                                bit,
+                            });
+                            //swapOutputs(gate1, gate2);
+                            continue :outer;
+                        } else {
+                            //put back, let's try something else
+                            swapOutputs(gate1, gate2);
+                        }
                     }
                 }
-                //was this good - did it reduce the failures by 1?
-                if (failures > this_failures) {
-                    //keep it - record that we already swapped these mofos
-                    try swaps.put(gate1_index, {});
-                    try swaps.put(gate2_index, {});
-                    failures = this_failures;
-                    try std.io.getStdOut().writer().print("Swapping {d} and {d} seems to be good (failures now {d})\n", .{
-                        gate1_index,
-                        gate2_index,
-                        failures,
-                    });
-                    if (failures == 0) {
-                        continue :outer;
-                    }
-                } else {
-                    //put back, let's try something else
-                    swapOutputs(gate1, gate2);
-                }
+                try std.io.getStdOut().writer().writeAll("!!! Failed to find fix !!!\n");
+                break :outer;
             }
         }
-        try std.io.getStdOut().writer().writeAll("!!! Failed to find fix !!!\n");
     }
 
     var ids = try std.ArrayList([]const u8).initCapacity(allocator, 8);
