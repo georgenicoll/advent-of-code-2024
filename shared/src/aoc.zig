@@ -17,10 +17,14 @@ pub fn Grid(comptime ELEMENT_TYPE: type) type {
         }
 
         pub fn deinit(self: *Self) void {
+            self.deinitRows();
+            self.rows.deinit();
+        }
+
+        fn deinitRows(self: *Self) void {
             for (self.rows.items) |row| {
                 self.allocator.free(row);
             }
-            self.rows.deinit();
         }
 
         /// Add a new row, the row will be copied and must be freed as usual
@@ -82,6 +86,13 @@ pub fn Grid(comptime ELEMENT_TYPE: type) type {
         fn setItemWithinBounds(self: *Self, i: usize, j: usize, item: ELEMENT_TYPE) void {
             const row = self.rows.items[j];
             row[i] = item;
+        }
+
+        pub fn clear(self: *Self) void {
+            self.deinitRows();
+            self.rows.clearRetainingCapacity();
+            self.width = 0;
+            self.height = 0;
         }
 
         pub fn print(self: Self, writer: anytype, comptime element_format: []const u8) !void {

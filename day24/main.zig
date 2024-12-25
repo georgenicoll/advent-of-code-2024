@@ -355,30 +355,6 @@ fn testBit(
     return true; //all ok
 }
 
-fn testAllBits(
-    context: *const Context,
-    inputs: *std.ArrayList(Input),
-    current_changes: *std.ArrayList(ValueChange),
-    next_changes: *std.ArrayList(ValueChange),
-    input_name: *std.ArrayList(u8),
-    num_bits: usize,
-) !bool {
-    for (0..num_bits) |bit| {
-        if (!try testBit(
-            context,
-            &inputs,
-            &current_changes,
-            &next_changes,
-            &input_name,
-            num_bits,
-            bit,
-        )) {
-            return false;
-        }
-    }
-    return true;
-}
-
 fn swapOutputs(gate1: *Gate, gate2: *Gate) void {
     const temp_output = gate1.output;
     gate1.output = gate2.output;
@@ -397,7 +373,138 @@ fn setUpSwap(swaps: *std.AutoHashMap(usize, void), context: *const Context, inde
     swapOutputs(gate1, gate2);
 }
 
+fn outputOutputGates(allocator: std.mem.Allocator, gates: *std.ArrayList([]const u8)) !void {
+    var output_string = std.ArrayList(u8).init(allocator);
+    defer output_string.deinit();
+
+    for (gates.items) |gate| {
+        try output_string.writer().writeAll(gate);
+        try output_string.writer().writeAll(" -> ");
+    }
+    try output_string.resize(output_string.items.len - 4);
+    try std.io.getStdOut().writer().writeAll(output_string.items);
+    try std.io.getStdOut().writer().writeAll("\n");
+}
+
+fn outputForGraphViz(allocator: std.mem.Allocator, context: *const Context) !void {
+    //Adapted from https://todd.ginsberg.com/post/advent-of-code/2024/day24/
+    var scratch = try std.ArrayList(u8).initCapacity(allocator, 100);
+    defer scratch.deinit();
+    const writer = std.io.getStdOut().writer();
+    try writer.writeAll("\n\n\n");
+
+    var z_gates = std.ArrayList([]const u8).init(allocator);
+    defer z_gates.deinit();
+    var x_gates = std.ArrayList([]const u8).init(allocator);
+    defer x_gates.deinit();
+    var y_gates = std.ArrayList([]const u8).init(allocator);
+    defer y_gates.deinit();
+
+    for (context.gates.items) |gate| {
+        if (gate.output[0] == 'z') {
+            scratch.clearRetainingCapacity();
+            try scratch.writer().writeAll(gate.output);
+            try z_gates.append(try allocator.dupe(u8, scratch.items));
+            scratch.items[0] = 'x';
+            try x_gates.append(try allocator.dupe(u8, scratch.items));
+            scratch.items[0] = 'y';
+            try y_gates.append(try allocator.dupe(u8, scratch.items));
+        }
+    }
+    std.mem.sort([]const u8, z_gates.items, {}, stringLessThan);
+    std.mem.sort([]const u8, x_gates.items, {}, stringLessThan);
+    std.mem.sort([]const u8, y_gates.items, {}, stringLessThan);
+
+    try writer.writeAll("digraph G {\n");
+    try writer.writeAll("  subgraph {\n");
+    try writer.writeAll("    node [style=filled,color=gold]\n");
+    try outputOutputGates(allocator, &z_gates);
+    try writer.writeAll("    ");
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  subgraph {\n");
+    try writer.writeAll("    node [style=filled,color=cornsilk]\n");
+    try outputOutputGates(allocator, &x_gates);
+    try writer.writeAll("  }\n");
+    try writer.writeAll("  subgraph {\n");
+    try writer.writeAll("    node [style=filled,color=khaki]\n");
+    try outputOutputGates(allocator, &y_gates);
+    try writer.writeAll("  }\n");
+
+    try writer.writeAll("  subgraph {\n");
+    try writer.writeAll("    node [style=filled,color=plum]\n");
+    try writer.writeAll("    ");
+    for (context.gates.items) |gate| {
+        if (gate.gate_type == GateType.AND) {
+            try writer.writeAll(gate.output);
+            try writer.writeAll(" ");
+        }
+    }
+    try writer.writeAll("\n  }\n");
+
+    try writer.writeAll("  subgraph {\n");
+    try writer.writeAll("    node [style=filled,color=yellowgreen]\n");
+    try writer.writeAll("    ");
+    for (context.gates.items) |gate| {
+        if (gate.gate_type == GateType.OR) {
+            try writer.writeAll(gate.output);
+            try writer.writeAll(" ");
+        }
+    }
+    try writer.writeAll("\n  }\n");
+
+    try writer.writeAll("  subgraph {\n");
+    try writer.writeAll("    node [style=filled,color=skyblue]\n");
+    try writer.writeAll("    ");
+    for (context.gates.items) |gate| {
+        if (gate.gate_type == GateType.XOR) {
+            try writer.writeAll(gate.output);
+            try writer.writeAll(" ");
+        }
+    }
+    try writer.writeAll("\n  }\n");
+
+    for (context.gates.items) |gate| {
+        try writer.print("    {s} -> {s}\n", .{ gate.input1, gate.output });
+        try writer.print("    {s} -> {s}\n", .{ gate.input2, gate.output });
+    }
+
+    try writer.writeAll("}\n");
+
+    try writer.writeAll("\n\n\n");
+}
+
+fn swap(
+    context: *const Context,
+    swaps: *std.StringHashMap(void),
+    output1: []const u8,
+    output2: []const u8,
+) !void {
+    var gate1: ?*Gate = null;
+    var gate2: ?*Gate = null;
+    for (context.gates.items) |gate| {
+        if (eql(u8, output1, gate.output)) {
+            gate1 = gate;
+        }
+        if (eql(u8, output2, gate.output)) {
+            gate2 = gate;
+        }
+    }
+    swapOutputs(gate1.?, gate2.?);
+    try swaps.put(output1, {});
+    try swaps.put(output2, {});
+}
+
 fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
+    var swaps = std.StringHashMap(void).init(allocator);
+    defer swaps.deinit();
+
+    try swap(context, &swaps, "hbs", "kfp");
+    try swap(context, &swaps, "z18", "dhq");
+    try swap(context, &swaps, "z22", "pdg");
+    try swap(context, &swaps, "z27", "jcp");
+
+    try outputForGraphViz(allocator, context);
+
     var next_changes = try std.ArrayList(ValueChange).initCapacity(allocator, 100);
     defer next_changes.deinit();
     var current_changes = try std.ArrayList(ValueChange).initCapacity(allocator, 100);
@@ -428,14 +535,6 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
         try inputs.append(Input{ .wire_id = try allocator.dupe(u8, input_name.items), .value = 0, .bit = bit });
     }
 
-    var swaps = std.AutoHashMap(usize, void).init(allocator);
-    defer swaps.deinit();
-
-    // try setUpSwap(&swaps, context, 81, 136);
-    // try setUpSwap(&swaps, context, 157, 173);
-    // try setUpSwap(&swaps, context, 87, 109);
-    // try setUpSwap(&swaps, context, 30, 94);
-
     //now find where there are failures and see if we can fix
     var has_error = true;
     outer: while (has_error) {
@@ -444,27 +543,21 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
             if (!try testBit(context, &inputs, &current_changes, &next_changes, &input_name, num_bits, bit)) {
                 has_error = true;
                 try std.io.getStdOut().writer().print("Failed at bit {d}\n", .{bit});
-                //try to fix...
+                //try to fix...This code is not working correctly...  Fixed via GraphViz
                 for (0..context.gates.items.len) |gate1_index| {
-                    if (swaps.contains(gate1_index)) {
+                    const gate1 = context.gates.items[gate1_index];
+                    if (swaps.contains(gate1.output)) {
                         continue;
                     }
                     for (0..context.gates.items.len) |gate2_index| {
-                        // if (gate1_index == 30 and gate2_index == 94) {
-                        //     continue;
-                        // }
-                        // if (gate1_index == 94 and gate2_index == 30) {
-                        //     continue;
-                        // }
                         if (gate1_index == gate2_index) {
                             continue;
                         }
-                        if (swaps.contains(gate2_index)) {
+                        const gate2 = context.gates.items[gate2_index];
+                        if (swaps.contains(gate2.output)) {
                             continue;
                         }
                         //swap over the outputs...
-                        const gate1 = context.gates.items[gate1_index];
-                        const gate2 = context.gates.items[gate2_index];
                         swapOutputs(gate1, gate2);
                         var good_to_bit = true;
                         for (0..bit + 2) |the_bit| {
@@ -483,14 +576,13 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
                         //was this good - did it reduce the failures?
                         if (good_to_bit) {
                             //keep it - record that we already swapped these mofos
-                            try swaps.put(gate1_index, {});
-                            try swaps.put(gate2_index, {});
-                            try std.io.getStdOut().writer().print("Swapping {d} and {d} seems to be good to {d}\n", .{
-                                gate1_index,
-                                gate2_index,
+                            try swaps.put(gate1.output, {});
+                            try swaps.put(gate2.output, {});
+                            try std.io.getStdOut().writer().print("Swapping {s} and {s} seems to be good for {d}\n", .{
+                                gate1.output,
+                                gate2.output,
                                 bit,
                             });
-                            //swapOutputs(gate1, gate2);
                             continue :outer;
                         } else {
                             //put back, let's try something else
@@ -507,9 +599,8 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
 
     var ids = try std.ArrayList([]const u8).initCapacity(allocator, 8);
     var swap_it = swaps.keyIterator();
-    while (swap_it.next()) |index| {
-        const gate = context.gates.items[index.*];
-        try ids.append(gate.output);
+    while (swap_it.next()) |output| {
+        try ids.append(output.*);
     }
     std.mem.sort([]const u8, ids.items, {}, stringLessThan);
 
