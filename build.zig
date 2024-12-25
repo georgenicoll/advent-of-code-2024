@@ -70,4 +70,5 @@ pub fn build(b: *std.Build) void {
     addExecutableWithName("day22", b, shared_mod, target, optimize);
     addExecutableWithName("day23", b, shared_mod, target, optimize);
     addExecutableWithName("day24", b, shared_mod, target, optimize);
+    addExecutableWithName("day25", b, shared_mod, target, optimize);
 }

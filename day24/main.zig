@@ -107,6 +107,7 @@ fn parse_line(allocator: std.mem.Allocator, context: *Context, line: []const u8)
         try context.inputs.append(Input{
             .wire_id = wire_id,
             .value = value,
+            .bit = 0,
         });
         return .{};
     }
@@ -260,18 +261,68 @@ fn populateWithBit(input_name: *std.ArrayList(u8), prefix: u8, bit: usize) !void
     try input_name.writer().print("{c}{d:0>2}", .{ prefix, bit });
 }
 
-fn setUpInputs(inputs: *std.ArrayList(Input), to_bit: usize) void {
+fn setUpInputsForCarry(inputs: *std.ArrayList(Input), to_bit: usize) void {
     for (inputs.items) |*input| {
-        if ()
-
-        if ((first_one != null and eql(u8, first_one.?, input.wire_id)) or
-            (second_one != null and eql(u8, second_one.?, input.wire_id)))
-        {
+        if (input.bit <= to_bit) {
             input.value = 1;
         } else {
             input.value = 0;
         }
     }
+}
+
+fn checkOutputsCarried(
+    context: *const Context,
+    input_name: *std.ArrayList(u8),
+    num_bits: usize,
+    to_bit: usize,
+) !bool {
+    for (0..num_bits) |bit| {
+        try populateWithBit(input_name, 'z', bit);
+        const wire = context.wires_by_id.get(input_name.items).?;
+        if (bit == 0 or bit > to_bit) {
+            if (wire.value != 0) {
+                return false;
+            }
+            continue;
+        }
+        if (wire.value != 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn setUpInputsForNoCarry(inputs: *std.ArrayList(Input), bit: usize, prefix: u8) void {
+    for (inputs.items) |*input| {
+        if (input.bit == bit and input.wire_id[0] == prefix) {
+            input.value = 1;
+        } else {
+            input.value = 0;
+        }
+    }
+}
+
+fn checkOutputsNoCarry(
+    context: *const Context,
+    input_name: *std.ArrayList(u8),
+    num_bits: usize,
+    on_bit: usize,
+) !bool {
+    for (0..num_bits) |bit| {
+        try populateWithBit(input_name, 'z', bit);
+        const wire = context.wires_by_id.get(input_name.items).?;
+        if (bit == on_bit) {
+            if (wire.value != 1) {
+                return false;
+            }
+            continue;
+        }
+        if (wire.value != 0) {
+            return false;
+        }
+    }
+    return true;
 }
 
 fn testBit(
@@ -280,47 +331,24 @@ fn testBit(
     current_changes: *std.ArrayList(ValueChange),
     next_changes: *std.ArrayList(ValueChange),
     input_name: *std.ArrayList(u8),
+    num_bits: usize,
     bit: usize,
 ) !bool {
-    //wires we need
-    try populateWithBit(input_name, 'x', bit);
-    const x_bit = context.wires_by_id.get(input_name.items).?;
-    try populateWithBit(input_name, 'y', bit);
-    const y_bit = context.wires_by_id.get(input_name.items).?;
-    try populateWithBit(input_name, 'z', bit);
-    const z_this_bit = context.wires_by_id.get(input_name.items).?;
-    try populateWithBit(input_name, 'z', bit + 1);
-    const z_next_bit = context.wires_by_id.get(input_name.items).?;
-
-    //x bit 0 and y bit 0 should be z bit 0
-    setUpInputs(inputs, null, null);
+    setUpInputsForCarry(inputs, bit);
     try run(context, inputs, current_changes, next_changes);
-    if (z_this_bit.value != 0) {
-        // try std.io.getStdOut().writer().print("Failed at 0,0 bit {d}\n", .{bit});
+    if (!try checkOutputsCarried(context, input_name, num_bits, bit + 1)) {
         return false;
     }
 
-    //x bit 1 and y bit 0 should be z bit 1
-    setUpInputs(inputs, x_bit.id, null);
+    setUpInputsForNoCarry(inputs, bit, 'x');
     try run(context, inputs, current_changes, next_changes);
-    if (z_this_bit.value != 1) {
-        // try std.io.getStdOut().writer().print("Failed at 1,0 bit {d}\n", .{bit});
+    if (!try checkOutputsNoCarry(context, input_name, num_bits, bit)) {
         return false;
     }
 
-    //x bit 0 and y bit 1 should be z bit 1
-    setUpInputs(inputs, y_bit.id, null);
+    setUpInputsForNoCarry(inputs, bit, 'y');
     try run(context, inputs, current_changes, next_changes);
-    if (z_this_bit.value != 1) {
-        // try std.io.getStdOut().writer().print("Failed at 1,0 bit {d}\n", .{bit});
-        return false;
-    }
-
-    //x bit 1 and y bit 1 should be next z bit 1
-    setUpInputs(inputs, x_bit.id, y_bit.id);
-    try run(context, inputs, current_changes, next_changes);
-    if (z_this_bit.value != 0 or z_next_bit.value != 1) {
-        // try std.io.getStdOut().writer().print("Failed at 1,1 bit {d}\n", .{bit});
+    if (!try checkOutputsNoCarry(context, input_name, num_bits, bit)) {
         return false;
     }
 
@@ -342,6 +370,7 @@ fn testAllBits(
             &current_changes,
             &next_changes,
             &input_name,
+            num_bits,
             bit,
         )) {
             return false;
@@ -394,9 +423,9 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
     var inputs = try std.ArrayList(Input).initCapacity(allocator, num_bits * 2);
     for (0..num_bits) |bit| {
         try populateWithBit(&input_name, 'x', bit);
-        try inputs.append(Input{ .wire_id = try allocator.dupe(u8, input_name.items), .value = 0 });
+        try inputs.append(Input{ .wire_id = try allocator.dupe(u8, input_name.items), .value = 0, .bit = bit });
         try populateWithBit(&input_name, 'y', bit);
-        try inputs.append(Input{ .wire_id = try allocator.dupe(u8, input_name.items), .value = 0 });
+        try inputs.append(Input{ .wire_id = try allocator.dupe(u8, input_name.items), .value = 0, .bit = bit });
     }
 
     var swaps = std.AutoHashMap(usize, void).init(allocator);
@@ -412,7 +441,7 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
     outer: while (has_error) {
         has_error = false;
         for (0..num_bits) |bit| {
-            if (!try testBit(context, &inputs, &current_changes, &next_changes, &input_name, bit)) {
+            if (!try testBit(context, &inputs, &current_changes, &next_changes, &input_name, num_bits, bit)) {
                 has_error = true;
                 try std.io.getStdOut().writer().print("Failed at bit {d}\n", .{bit});
                 //try to fix...
@@ -445,6 +474,7 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
                                 &current_changes,
                                 &next_changes,
                                 &input_name,
+                                num_bits,
                                 the_bit,
                             )) {
                                 good_to_bit = false;
@@ -472,6 +502,7 @@ fn calculate_2(allocator: std.mem.Allocator, context: *const Context) !void {
                 break :outer;
             }
         }
+        break :outer;
     }
 
     var ids = try std.ArrayList([]const u8).initCapacity(allocator, 8);
